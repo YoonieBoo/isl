@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, Card, EmptyState, PageHeader, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui";
+import { Card, EmptyState, PageHeader, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui";
 import { ArrowLeftIcon, BuildingIcon, SearchIcon, UserIcon } from "@/components/icons";
 
 // PostgREST's .or() filter string treats "," and "()" as syntax, not
@@ -180,7 +180,6 @@ export default async function LearnersPage({
                 <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-foreground-muted">
                   <th className="px-5 py-3">Name</th>
                   <th className="px-5 py-3">ID</th>
-                  <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Record updated</th>
                 </tr>
               </thead>
@@ -197,11 +196,6 @@ export default async function LearnersPage({
                     </td>
                     <td className="px-5 py-3 text-foreground-muted">
                       {learner.external_reference || "—"}
-                    </td>
-                    <td className="px-5 py-3">
-                      <Badge tone={learner.status === "active" ? "success" : "neutral"}>
-                        {learner.status}
-                      </Badge>
                     </td>
                     <td className="px-5 py-3 text-foreground-muted">
                       {new Date(learner.updated_at).toLocaleString()}

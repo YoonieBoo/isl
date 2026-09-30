@@ -88,7 +88,6 @@ export default async function LearnerDetailPage({
           title={learner.display_name}
           subtitle={[learner.external_reference, learner.email].filter(Boolean).join(" · ") || undefined}
           href={`/profiles/${learner.id}`}
-          badge={<Badge tone={learner.status === "active" ? "success" : "neutral"}>{learner.status}</Badge>}
           actions={
             <>
               <Link href={`/learners/${learner.id}/edit`}>
@@ -138,9 +137,6 @@ export default async function LearnerDetailPage({
                       >
                         {le.learning_environments?.name}
                       </Link>
-                      <Badge tone={le.learning_environments?.status === "active" ? "success" : "neutral"}>
-                        {le.learning_environments?.status}
-                      </Badge>
                     </div>
                     {envId && (
                       <div className="flex items-center gap-2">
