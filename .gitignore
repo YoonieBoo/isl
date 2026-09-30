@@ -32,9 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
+
+# local-only: real student data, Supabase CLI cache, Claude local settings
+/screenshots/
+supabase/.temp/
+.claude/settings.local.json
 
 # typescript
 *.tsbuildinfo

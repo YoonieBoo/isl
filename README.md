@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ISL — Learner Intelligence Platform
 
-## Getting Started
+Operational MVP for **SmartDiscovery + ISL**, built for Peanuts Academy / Praram Nine Technology. Turns learner data and learning evidence into structured, reviewable, traceable, usable learner intelligence.
 
-First, run the development server:
+All 15 build phases from the requirement spec are implemented — see the in-app Dashboard for the live checklist.
+
+Full specs (check every decision against these): [`references/`](./references)
+- [`requirement-specifications.md`](./references/requirement-specifications.md) — authoritative build spec
+- [`conceptual-overview.md`](./references/conceptual-overview.md) — product concept
+- [`presentation-deck-notes.md`](./references/presentation-deck-notes.md) — visual identity notes
+
+## Stack
+
+Next.js 16 (App Router) + Supabase (Postgres, Auth, Storage) + Vercel.
+
+**Non-negotiable**: the system of record is Supabase Postgres. Browser `localStorage`/`sessionStorage`/in-memory state/hardcoded JSON are never acceptable as persistence.
+
+## Setup
 
 ```bash
+npm install
+cp .env.local.example .env.local   # fill in your Supabase project URL + anon key
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Sign up for an account — the first user should be promoted to the `admin` role directly in the `profiles` table (everyone else defaults to `analyst`, per spec §14 there's no self-serve admin escalation).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+> Node 22+ is recommended — `@supabase/supabase-js` warns on Node 20 (still works, but is deprecated upstream).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To use the **External AI Adapter** (real learner-signal extraction via OpenAI instead of the deterministic Mock adapter), set `OPENAI_API_KEY` in `.env.local`.
 
-## Learn More
+## Seeding demo data
 
-To learn more about Next.js, take a look at the following resources:
+Seeding goes through the real app end-to-end (spec §23 forbids hardcoded JSON as the demo system of record) — it drives a browser against your running dev server:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx playwright install chromium   # first time only
+npm run dev                       # in one terminal
+npm run seed                      # in another
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Creates a learning environment, uploads/validates a dataset (including a deliberate duplicate ID and an empty-evidence row), runs SmartDiscovery processing (Mock adapter — no API cost), reviews a spread of outcomes (agree/revise/reject/unsure), drafts and approves insight, and adds portfolio artifacts.
 
-## Deploy on Vercel
+## Database
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Schema lives in `supabase/migrations/`, one file per build phase. Apply to a linked project with `npx supabase db push`; regenerate types after any schema change with:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npx supabase gen types typescript --linked > src/lib/supabase/database.types.ts
+```
+
+## Build order
+
+See "Suggested Build Order" in `references/requirement-specifications.md` §22. Current phase is tracked on the in-app Dashboard.
