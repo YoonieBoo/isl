@@ -10,7 +10,6 @@ import {
   BuildingIcon,
   UserIcon,
   PlayCircleIcon,
-  FolderIcon,
   ChevronUpDownIcon,
   LogOutIcon,
 } from "@/components/icons";
@@ -19,8 +18,8 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
   { href: "/learning-environments", label: "Learning Environments", icon: BuildingIcon },
   { href: "/learners", label: "Learners", icon: UserIcon },
-  { href: "/processing-runs", label: "Processing Runs", icon: PlayCircleIcon },
-  { href: "/portfolios", label: "Portfolios", icon: FolderIcon },
+  // Secondary/technical page — still reachable, but visually de-emphasised.
+  { href: "/processing-runs", label: "Processing Runs", icon: PlayCircleIcon, dimmed: true },
 ];
 
 function UserMenu({ userEmail }: { userEmail: string }) {
@@ -110,7 +109,7 @@ export function AppShell({
                   isActive
                     ? "bg-isl-blue-pale text-isl-blue-dark"
                     : "text-foreground-muted hover:bg-surface-pale hover:text-foreground"
-                }`}
+                } ${"dimmed" in item && item.dimmed && !isActive ? "opacity-50 hover:opacity-100" : ""}`}
               >
                 <Icon className="h-5 w-5 shrink-0" />
                 {item.label}
