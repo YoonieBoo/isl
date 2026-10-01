@@ -251,20 +251,25 @@ export async function executeProcessingRun(runId: string) {
     // Instructor-requested change: an on-demand single-learner Analyze run
     // now auto-drafts *and* auto-approves that learner's insight for this
     // environment immediately, without waiting for human review — see
-    // autoUpdateEnvironmentInsight for the tradeoff this makes. Only for
-    // learner-scoped runs (not a whole-class batch run against one dataset).
-    if (run.learner_id && (finalStatus === "completed" || finalStatus === "completed_with_warning")) {
-      await autoUpdateEnvironmentInsight(supabase, run.learner_id, run.environment_id);
-      await logActivity(
-        supabase,
-        user.id,
-        "approved",
-        "learner_insight",
-        run.learner_id,
-        "Auto-generated insight from Analyze (not human-reviewed)",
-      );
-      revalidatePath(`/profiles/${run.learner_id}`);
-      revalidatePath(`/learners/${run.learner_id}`);
+    // autoUpdateEnvironmentInsight for the tradeoff this makes.
+    // Whole-class batch runs do the same for every learner they produced
+    // signals for — otherwise those learners have evidence but an empty
+    // profile until someone clicks Analyze on each of them individually.
+    if (finalStatus === "completed" || finalStatus === "completed_with_warning") {
+      const learnerIds = run.learner_id ? [run.learner_id] : [...byLearner.keys()];
+      for (const learnerId of learnerIds) {
+        await autoUpdateEnvironmentInsight(supabase, learnerId, run.environment_id);
+        await logActivity(
+          supabase,
+          user.id,
+          "approved",
+          "learner_insight",
+          learnerId,
+          "Auto-generated insight from Analyze (not human-reviewed)",
+        );
+        revalidatePath(`/profiles/${learnerId}`);
+        revalidatePath(`/learners/${learnerId}`);
+      }
     }
 
     revalidatePath(`/processing-runs/${runId}`);
