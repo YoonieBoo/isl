@@ -180,7 +180,9 @@ export default async function LearnerProfilePage({
                 selected={selectedEnvironmentId}
               />
               <a
-                href={`/api/learners/${learner.id}/report`}
+                href={`/api/learners/${learner.id}/report${
+                  selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""
+                }`}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-surface-pale hover:text-foreground"
               >
                 Download PDF

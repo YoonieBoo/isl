@@ -6,21 +6,35 @@ import { generateLearnerOverview } from "@/lib/pdf/learner-overview";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+// "DDI2331 Design Thinking" -> "DDI2331"; names without a course code are kept as-is.
+function courseCode(name: string): string {
+  return name.match(/\b[A-Z]{2,}\s?\d{3,}[A-Z]?\b/)?.[0] ?? name;
+}
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Set when downloaded from the profile's course dropdown: the PDF then covers that course only.
+  const environmentId = new URL(request.url).searchParams.get("environment");
   const supabase = await createClient();
+
+  let environmentsQuery = supabase
+    .from("learner_environments")
+    .select("environment_id, learning_environments(name)")
+    .eq("learner_id", id);
+  let insightsQuery = supabase
+    .from("learner_insights")
+    .select("observed_strengths, development_needs, learning_preferences")
+    .eq("learner_id", id)
+    .eq("status", "approved");
+  if (environmentId) {
+    environmentsQuery = environmentsQuery.eq("environment_id", environmentId);
+    insightsQuery = insightsQuery.eq("environment_id", environmentId);
+  }
 
   const [{ data: learner, error }, { data: environments }, { data: approvedInsights }] = await Promise.all([
     supabase.from("learners").select("display_name, external_reference").eq("id", id).single(),
-    supabase
-      .from("learner_environments")
-      .select("learning_environments(name)")
-      .eq("learner_id", id),
-    supabase
-      .from("learner_insights")
-      .select("observed_strengths, development_needs, learning_preferences")
-      .eq("learner_id", id)
-      .eq("status", "approved"),
+    environmentsQuery,
+    insightsQuery,
   ]);
 
   if (error || !learner) {
@@ -32,7 +46,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const learningPreferences = [...new Set((approvedInsights ?? []).flatMap((i) => i.learning_preferences))];
   const environmentNames = (environments ?? [])
     .map((e) => e.learning_environments?.name)
-    .filter((n): n is string => Boolean(n));
+    .filter((n): n is string => Boolean(n))
+    .map(courseCode);
 
   const overview = await generateLearnerOverview({
     learnerName: learner.display_name,
@@ -53,7 +68,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   };
 
   const buffer = await renderToBuffer(<LearnerReportDocument data={data} />);
-  const fileName = `${learner.display_name.replace(/[^a-z0-9]+/gi, "-")}-insights.pdf`;
+  const fileStem = environmentId && environmentNames[0]
+    ? `${learner.display_name} ${environmentNames[0]}`
+    : learner.display_name;
+  const fileName = `${fileStem.replace(/[^a-z0-9]+/gi, "-")}-insights.pdf`;
 
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
