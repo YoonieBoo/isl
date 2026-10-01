@@ -16,9 +16,9 @@ import {
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
-  { href: "/learning-environments", label: "Learning Environments", icon: BuildingIcon },
   { href: "/learners", label: "Learners", icon: UserIcon },
-  // Secondary/technical page — still reachable, but visually de-emphasised.
+  // Secondary pages — still reachable, but visually de-emphasised.
+  { href: "/learning-environments", label: "Learning Environments", icon: BuildingIcon, dimmed: true },
   { href: "/processing-runs", label: "Processing Runs", icon: PlayCircleIcon, dimmed: true },
 ];
 
