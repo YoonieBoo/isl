@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createClient } from "@/lib/supabase/server";
 import { LearnerReportDocument, type LearnerReportData } from "@/lib/pdf/learner-report";
-import { generateLearnerOverview, type OverviewCourse } from "@/lib/pdf/learner-overview";
 import { courseCode } from "@/lib/course-code";
+import { readCourseOverview } from "@/lib/skills/overview";
 import { LEVEL_LABEL, bestEvidence, getSkillFramework, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
 
 export const dynamic = "force-dynamic";
@@ -29,10 +29,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     insightsQuery = insightsQuery.eq("environment_id", environmentId);
   }
 
-  const [{ data: learner, error }, { data: environments }, { data: insights }] = await Promise.all([
+  const [{ data: learner, error }, { data: environments }, { data: insights }, { data: learnerProfile }] = await Promise.all([
     supabase.from("learners").select("display_name, external_reference").eq("id", id).single(),
     environmentsQuery,
     insightsQuery,
+    supabase.from("learner_profiles").select("summary").eq("learner_id", id).maybeSingle(),
   ]);
 
   if (error || !learner) {
@@ -53,7 +54,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // Strengths / development focus come from the fixed per-course skill
   // ratings, in the same "label: quote" form the report renders.
-  const overviewCourses: OverviewCourse[] = [];
   const bulletsFor = (levels: SkillLevel[]) => {
     const out: string[] = [];
     for (const level of levels) {
@@ -75,29 +75,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
     return out;
   };
-  for (const course of courses) {
-    const framework = getSkillFramework(course.name);
-    const ratings = ratingsByEnvironment.get(course.id);
-    if (!framework || !ratings) continue;
-    overviewCourses.push({
-      code: courseCode(course.name),
-      skills: framework.skills.flatMap((skill) => {
-        const r = ratings.skills.find((s) => s.key === skill.key);
-        return r ? [{ name: skill.name, level: r.level, summary: r.summary }] : [];
-      }),
-    });
-  }
-
   const strengths = bulletsFor(["strong"]);
   const developmentNeeds = bulletsFor(["needs_support", "developing"]);
   const learningPreferences = [...new Set((insights ?? []).flatMap((i) => i.learning_preferences))];
 
-  // One course: its rating overview already summarizes it. Several: write one
-  // combined overview across them.
-  const singleRatings = courses.length === 1 ? ratingsByEnvironment.get(courses[0].id) : undefined;
-  const overview = singleRatings?.overview
-    ? singleRatings.overview
-    : await generateLearnerOverview({ learnerName: learner.display_name, courses: overviewCourses });
+  // Same stored Overview the profile page shows: the course's own overview
+  // for a single-course PDF, otherwise the learner's all-courses overview.
+  const courseOverview = (insights ?? []).map((i) => readCourseOverview(i.approved_output)).find(Boolean) ?? null;
+  const overview = environmentId ? courseOverview : (learnerProfile?.summary ?? courseOverview);
 
   const environmentNames = courses.map((c) => courseCode(c.name));
   const data: LearnerReportData = {

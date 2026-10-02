@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AccentCard, Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { AccentCard, Badge, Card, PageHeader } from "@/components/ui";
 import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon } from "@/components/icons";
 import { SkillLevelBadge } from "@/components/skill-level";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
+import { readCourseOverview } from "@/lib/skills/overview";
 import { courseCode, shortFormName } from "@/lib/course-code";
 import { getSkillFramework, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
 
@@ -138,7 +139,13 @@ export default async function LearnerProfilePage({
   const selectedEnvironmentId = typeof environmentFilter === "string" ? environmentFilter : null;
   const supabase = await createClient();
 
-  const [{ data: learner, error }, { data: environments }, { data: allApprovedInsights }, { data: artifacts }] =
+  const [
+    { data: learner, error },
+    { data: environments },
+    { data: allApprovedInsights },
+    { data: artifacts },
+    { data: learnerProfile },
+  ] =
     await Promise.all([
       supabase.from("learners").select("*").eq("id", learnerId).single(),
       supabase
@@ -158,6 +165,7 @@ export default async function LearnerProfilePage({
         .select("id, title, artifact_type, created_at, external_url, file_reference")
         .eq("learner_id", learnerId)
         .order("created_at", { ascending: false }),
+      supabase.from("learner_profiles").select("summary, updated_at").eq("learner_id", learnerId).maybeSingle(),
     ]);
 
   if (error || !learner) notFound();
@@ -181,6 +189,17 @@ export default async function LearnerProfilePage({
     const ratings = readSkillRatings(insight.approved_output);
     if (ratings && !ratingsByEnvironment.has(insight.environment_id)) ratingsByEnvironment.set(insight.environment_id, ratings);
   }
+
+  // Overview: one course picked -> that course's overview; otherwise the
+  // all-courses overview stored on the learner's profile.
+  const latestCourseInsight = selectedEnvironmentId
+    ? [...approvedInsights].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).find((i) => readCourseOverview(i.approved_output))
+    : undefined;
+  const overview = latestCourseInsight
+    ? { text: readCourseOverview(latestCourseInsight.approved_output)!, updatedAt: latestCourseInsight.updated_at }
+    : !selectedEnvironmentId && learnerProfile?.summary
+      ? { text: learnerProfile.summary, updatedAt: learnerProfile.updated_at }
+      : null;
 
   const showCourse = !selectedEnvironmentId && courses.length > 1;
   const strengths = skillBullets(courses, ratingsByEnvironment, ["strong"], showCourse);
@@ -269,6 +288,25 @@ export default async function LearnerProfilePage({
         />
       </div>
 
+      <Card className="mt-6">
+        <h2 className="text-base font-semibold text-foreground">Overview</h2>
+        <div className="mt-4 border-t border-border pt-4">
+          {overview ? (
+            <>
+              <p className="text-sm leading-relaxed text-foreground">{overview.text}</p>
+              <p className="mt-3 flex items-center gap-1.5 text-xs text-foreground-muted">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Updated {new Date(overview.updatedAt).toLocaleDateString()}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-foreground-muted">
+              No overview yet. Open the learner record and click Analyze for a course.
+            </p>
+          )}
+        </div>
+      </Card>
+
       <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
         <AccentCard accent="blue" title="Strengths">
           <BulletList items={strengths} />
@@ -303,38 +341,6 @@ export default async function LearnerProfilePage({
           )}
         </AccentCard>
       </div>
-
-      <Card className="mt-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Approved insights</h2>
-          {approvedInsights.length > 0 && (
-            <Link href={`/insights?learner=${learner.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-isl-blue hover:underline">
-              View all <ArrowRightIcon className="h-4 w-4" />
-            </Link>
-          )}
-        </div>
-        {approvedInsights.length > 0 ? (
-          <ul className="mt-3 space-y-3">
-            {approvedInsights.map((i) => (
-              <li key={i.id} className="border-b border-border pb-3 last:border-0">
-                <Link href={`/insights/${i.id}`} className="font-medium text-isl-blue hover:underline">
-                  {i.title}
-                </Link>
-                <p className="mt-1 text-sm text-foreground-muted">{i.summary}</p>
-                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-foreground-muted">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  Approved {i.approved_at ? new Date(i.approved_at).toLocaleDateString() : "—"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState
-            title="No approved insight yet"
-            description="Insights appear here after the learner is analyzed for a course."
-          />
-        )}
-      </Card>
 
       <Card className="mt-4">
         <div className="flex items-center justify-between">

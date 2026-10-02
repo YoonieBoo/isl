@@ -2,6 +2,7 @@ import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { getSkillFramework, readSkillRatings } from "@/lib/skills/frameworks";
 import { rateLearnerSkills } from "@/lib/skills/rate-skills";
+import { readCourseOverview, refreshLearnerSummary, writeCourseOverview } from "@/lib/skills/overview";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -349,20 +350,26 @@ export async function autoUpdateEnvironmentInsight(
     .limit(1)
     .maybeSingle();
 
-  // If the rating call failed this time, keep the previously stored ratings
-  // rather than wiping them.
-  let ratingsToStore = skillRatings;
-  if (!ratingsToStore && existing) {
-    const { data: previous } = await supabase
-      .from("learner_insights")
-      .select("approved_output")
-      .eq("id", existing.id)
-      .single();
-    ratingsToStore = readSkillRatings(previous?.approved_output);
-  }
+  // If an AI call fails this time, keep what was stored before rather than
+  // wiping it.
+  const { data: previous } = existing
+    ? await supabase.from("learner_insights").select("approved_output").eq("id", existing.id).single()
+    : { data: null };
+  const ratingsToStore = skillRatings ?? readSkillRatings(previous?.approved_output);
 
-  const summary =
-    ratingsToStore?.overview || (highlights ? `${countsSentence} ${highlights}` : countsSentence);
+  // The profile's "Overview": skill ratings plus the AI's other observations.
+  const overview =
+    (ratingsToStore && env?.name
+      ? await writeCourseOverview({
+          learnerName: source.learnerName,
+          courseName: env.name,
+          ratings: ratingsToStore,
+          preferences: learningPreferences,
+          concerns,
+        })
+      : null) ?? readCourseOverview(previous?.approved_output);
+
+  const summary = overview || (highlights ? `${countsSentence} ${highlights}` : countsSentence);
 
   const approvedOutput = {
     title,
@@ -372,6 +379,7 @@ export async function autoUpdateEnvironmentInsight(
     learning_preferences: learningPreferences,
     concerns,
     ...(ratingsToStore ? { skill_ratings: ratingsToStore } : {}),
+    ...(overview ? { overview } : {}),
   };
 
   const row = {
@@ -413,4 +421,6 @@ export async function autoUpdateEnvironmentInsight(
   if (evidenceRows.length > 0) {
     await supabase.from("insight_evidence").insert(evidenceRows);
   }
+
+  await refreshLearnerSummary(supabase, learnerId);
 }
