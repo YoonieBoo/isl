@@ -1,37 +1,64 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import { LEVEL_LABEL, type SkillLevel } from "@/lib/skills/frameworks";
 
-// Plain nested Text/View only — react-pdf renders flex-row and wrapped Views
-// unreliably (blank first page), so every line here is a stacked block.
+// The built-in Helvetica font has no arrow glyphs, which learners often type
+// in step-by-step workflow answers ("Step 1 → Step 2").
+function pdfSafe(text: string): string {
+  return text.replace(/[→⇒➔➜]/g, "->").replace(/[←⇐]/g, "<-");
+}
+
+// Mirrors the "label: quote" bullet format used everywhere else in the app
+// (see BulletList in profiles/[learnerId]/page.tsx) so the PDF reads the
+// same way the on-screen report card does.
+function splitBullet(raw: string): { label: string; quote: string | null } {
+  const item = pdfSafe(raw);
+  const separatorIndex = item.indexOf(": ");
+  if (separatorIndex === -1) return { label: item, quote: null };
+  return { label: item.slice(0, separatorIndex), quote: item.slice(separatorIndex + 2) };
+}
+
 const styles = StyleSheet.create({
   page: { padding: 44, fontSize: 10, fontFamily: "Helvetica", color: "#1f2937" },
   title: { fontSize: 20, fontFamily: "Helvetica-Bold", marginBottom: 3 },
   subtitle: { fontSize: 12, color: "#6b7280", marginBottom: 3 },
   environmentsLine: { fontSize: 9.5, color: "#9ca3af", marginBottom: 22 },
-  sectionTitle: { fontSize: 13, fontFamily: "Helvetica-Bold", marginTop: 20, marginBottom: 6 },
-  courseOverview: { fontSize: 9.5, color: "#4b5563", lineHeight: 1.5, marginBottom: 10 },
-  skill: { marginBottom: 11 },
-  skillName: { fontSize: 10, fontFamily: "Helvetica-Bold", marginBottom: 2 },
-  skillSummary: { fontSize: 9.5, color: "#374151", lineHeight: 1.45 },
-  quote: { fontSize: 9, color: "#6b7280", lineHeight: 1.45, marginTop: 2 },
+  cardTitle: { fontSize: 12, fontFamily: "Helvetica-Bold", marginTop: 18, marginBottom: 9 },
+  bullet: { marginBottom: 10 },
+  bulletLabel: { fontSize: 10, fontFamily: "Helvetica-Bold", marginBottom: 3 },
+  bulletQuote: { fontSize: 9.5, color: "#4b5563", lineHeight: 1.45 },
   emptyText: { fontSize: 9.5, color: "#9ca3af", fontStyle: "italic" },
   overviewText: { fontSize: 10, lineHeight: 1.55, color: "#1f2937" },
 });
 
-const LEVEL_COLOR: Record<SkillLevel, string> = {
-  strong: "#059669",
-  developing: "#d97706",
-  needs_support: "#dc2626",
-  not_enough_evidence: "#9ca3af",
+const ACCENT = {
+  strengths: "#1656f5",
+  development: "#f59e0b",
+  preferences: "#8b5cf6",
 };
 
-export type ReportSkill = { name: string; level: SkillLevel; summary: string; quote: string | null; form: string | null };
-export type ReportCourse = { code: string; overview: string | null; skills: ReportSkill[] | null };
+function BulletSection({ items }: { items: string[] }) {
+  if (items.length === 0) return <Text style={styles.emptyText}>Needs further evidence.</Text>;
+  return (
+    <View>
+      {items.map((item, i) => {
+        const { label, quote } = splitBullet(item);
+        return (
+          <View key={i} style={styles.bullet}>
+            <Text style={styles.bulletLabel}>• {label}</Text>
+            {quote && <Text style={styles.bulletQuote}>&ldquo;{quote}&rdquo;</Text>}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 export type LearnerReportData = {
   learnerName: string;
   externalReference: string | null;
-  courses: ReportCourse[];
+  strengths: string[];
+  developmentNeeds: string[];
+  learningPreferences: string[];
+  environments: string[];
   overview: string | null;
 };
 
@@ -45,45 +72,33 @@ export function LearnerReportDocument({ data }: { data: LearnerReportData }) {
           {data.externalReference ? ` (${data.externalReference})` : ""}
         </Text>
         <Text style={styles.environmentsLine}>
-          {data.courses.length > 0 ? data.courses.map((c) => c.code).join(", ") : "Not enrolled anywhere yet."}
+          {data.environments.length > 0 ? data.environments.join(", ") : "Not enrolled anywhere yet."}
         </Text>
 
         {data.overview && (
           <>
-            <Text style={styles.sectionTitle}>Overview</Text>
+            <Text style={styles.cardTitle}>Overview</Text>
             <Text style={styles.overviewText}>{data.overview}</Text>
           </>
         )}
 
-        {data.courses.map((course) => (
-          <View key={course.code}>
-            <Text style={styles.sectionTitle}>
-              <Text style={{ color: "#1656f5" }}>• </Text>
-              {course.code} skills
-            </Text>
-            {/* With one course the top Overview already is this course's overview. */}
-            {course.overview && data.courses.length > 1 && <Text style={styles.courseOverview}>{course.overview}</Text>}
-            {course.skills ? (
-              course.skills.map((skill) => (
-                <View key={skill.name} style={styles.skill} wrap={false}>
-                  <Text style={styles.skillName}>
-                    {skill.name}
-                    <Text style={{ color: "#9ca3af" }}>  —  </Text>
-                    <Text style={{ color: LEVEL_COLOR[skill.level] }}>{LEVEL_LABEL[skill.level]}</Text>
-                  </Text>
-                  <Text style={styles.skillSummary}>{skill.summary}</Text>
-                  {skill.quote && (
-                    <Text style={styles.quote}>
-                      &ldquo;{skill.quote}&rdquo;{skill.form ? `  (${skill.form})` : ""}
-                    </Text>
-                  )}
-                </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>Not rated yet.</Text>
-            )}
-          </View>
-        ))}
+        <Text style={styles.cardTitle}>
+          <Text style={{ color: ACCENT.strengths }}>• </Text>
+          Strengths
+        </Text>
+        <BulletSection items={data.strengths} />
+
+        <Text style={styles.cardTitle}>
+          <Text style={{ color: ACCENT.development }}>• </Text>
+          Development Focus
+        </Text>
+        <BulletSection items={data.developmentNeeds} />
+
+        <Text style={styles.cardTitle}>
+          <Text style={{ color: ACCENT.preferences }}>• </Text>
+          Learning Preferences
+        </Text>
+        <BulletSection items={data.learningPreferences} />
       </Page>
     </Document>
   );

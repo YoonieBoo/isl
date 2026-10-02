@@ -207,6 +207,12 @@ export type SkillRatings = {
   model: string;
 };
 
+// The fullest quote best shows the reasoning behind a rating when only one
+// can be displayed.
+export function bestEvidence(rating: SkillRating): SkillEvidence | undefined {
+  return [...rating.evidence].sort((a, b) => b.quote.length - a.quote.length)[0];
+}
+
 export function readSkillRatings(approvedOutput: unknown): SkillRatings | null {
   const r = (approvedOutput as { skill_ratings?: SkillRatings } | null)?.skill_ratings;
   return r && Array.isArray(r.skills) ? r : null;
