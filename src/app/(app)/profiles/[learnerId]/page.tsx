@@ -15,35 +15,80 @@ type Bullet = {
   tooltip?: string;
   courses: string[];
   level?: SkillLevel;
+  /** Skill bullets open their evidence in place instead of linking away. */
+  detail?: { summary: string; evidence: { quote: string; form: string; href: string | null }[] };
 };
+
+function BulletTags({ item }: { item: Bullet }) {
+  return (
+    <>
+      {item.level && <SkillLevelBadge level={item.level} />}
+      {item.courses.map((c) => (
+        <span key={c} className="rounded-full bg-surface-pale px-2 py-0.5 text-xs font-medium text-foreground-muted">
+          {c}
+        </span>
+      ))}
+    </>
+  );
+}
 
 function BulletList({ items }: { items: Bullet[] }) {
   if (items.length === 0) return <p className="text-sm text-foreground-muted">Needs further evidence.</p>;
   return (
     <ul className="list-disc space-y-4 pl-5 text-sm leading-relaxed text-foreground marker:text-foreground-muted">
-      {items.map((item, i) => (
-        <li key={i} title={item.tooltip}>
-          <div className="flex flex-wrap items-center gap-2">
-            {item.href ? (
-              <Link
-                href={item.href}
-                className="font-semibold text-foreground underline decoration-dotted underline-offset-2 hover:text-isl-blue"
-              >
-                {item.label}
-              </Link>
-            ) : (
-              <span className="font-semibold text-foreground">{item.label}</span>
-            )}
-            {item.level && <SkillLevelBadge level={item.level} />}
-            {item.courses.map((c) => (
-              <span key={c} className="rounded-full bg-surface-pale px-2 py-0.5 text-xs font-medium text-foreground-muted">
-                {c}
-              </span>
-            ))}
-          </div>
-          {item.quote && <span className="text-foreground-muted">&ldquo;{item.quote}&rdquo;</span>}
-        </li>
-      ))}
+      {items.map((item, i) =>
+        item.detail ? (
+          <li key={i}>
+            <details className="group">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-foreground underline decoration-dotted underline-offset-2 group-hover:text-isl-blue">
+                    {item.label}
+                  </span>
+                  <BulletTags item={item} />
+                </div>
+                {item.quote && <span className="text-foreground-muted">&ldquo;{item.quote}&rdquo;</span>}
+              </summary>
+              <div className="mt-2 rounded-lg bg-surface-pale p-3">
+                <p className="text-sm leading-relaxed text-foreground">{item.detail.summary}</p>
+                <ul className="mt-3 space-y-3 border-l-2 border-border pl-3">
+                  {item.detail.evidence.map((e, j) => (
+                    <li key={j}>
+                      <p className="text-foreground">&ldquo;{e.quote}&rdquo;</p>
+                      <p className="mt-0.5 text-xs text-foreground-muted">
+                        {e.href ? (
+                          <Link href={e.href} className="hover:text-isl-blue hover:underline">
+                            {e.form}
+                          </Link>
+                        ) : (
+                          e.form
+                        )}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          </li>
+        ) : (
+          <li key={i} title={item.tooltip}>
+            <div className="flex flex-wrap items-center gap-2">
+              {item.href ? (
+                <Link
+                  href={item.href}
+                  className="font-semibold text-foreground underline decoration-dotted underline-offset-2 hover:text-isl-blue"
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <span className="font-semibold text-foreground">{item.label}</span>
+              )}
+              <BulletTags item={item} />
+            </div>
+            {item.quote && <span className="text-foreground-muted">&ldquo;{item.quote}&rdquo;</span>}
+          </li>
+        ),
+      )}
     </ul>
   );
 }
@@ -69,10 +114,17 @@ function skillBullets(
         bullets.push({
           label: skill.name,
           quote: evidence?.quote ?? null,
-          href: evidence?.processingResultId ? `/reviews/${evidence.processingResultId}` : null,
-          tooltip: [rating.summary, evidence ? `Based on: ${shortFormName(evidence.form)}` : null].filter(Boolean).join("\n"),
+          href: null,
           courses: showCourse ? [courseCode(course.name)] : [],
           level: levels.length > 1 ? level : undefined,
+          detail: {
+            summary: rating.summary,
+            evidence: rating.evidence.map((e) => ({
+              quote: e.quote,
+              form: shortFormName(e.form),
+              href: e.processingResultId ? `/reviews/${e.processingResultId}` : null,
+            })),
+          },
         });
       }
     }
