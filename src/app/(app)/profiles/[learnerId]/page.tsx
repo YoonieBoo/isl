@@ -6,6 +6,7 @@ import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon } from "@/components/icons"
 import { SkillLevelBadge } from "@/components/skill-level";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
 import { readCourseOverview } from "@/lib/skills/overview";
+import { DownloadPdfButton } from "@/app/(app)/profiles/[learnerId]/download-pdf-button";
 import { courseCode, shortFormName } from "@/lib/course-code";
 import { getSkillFramework, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
 
@@ -277,12 +278,9 @@ export default async function LearnerProfilePage({
           action={
             <div className="flex items-center gap-2">
               <CourseFilter environments={allCourses} selected={selectedEnvironmentId} />
-              <a
+              <DownloadPdfButton
                 href={`/api/learners/${learner.id}/report${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-surface-pale hover:text-foreground"
-              >
-                Download PDF
-              </a>
+              />
             </div>
           }
         />

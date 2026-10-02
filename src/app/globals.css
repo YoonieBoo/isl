@@ -36,3 +36,49 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* ISL loader (components/isl-loader.tsx). One 1.5s cycle: huddled ->
+   half-turn spin out to the corners -> pause -> half-turn spin back in,
+   with a small overshoot as the dots land, like the brand recording. */
+.isl-loader-rotor {
+  animation: isl-loader-rotate 1.5s infinite;
+}
+.isl-loader-dot {
+  animation: isl-loader-dot 1.5s infinite;
+}
+@keyframes isl-loader-rotate {
+  0%,
+  30% {
+    transform: rotate(0deg);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.45, 1);
+  }
+  53%,
+  78% {
+    transform: rotate(180deg);
+    animation-timing-function: cubic-bezier(0.3, 1.35, 0.6, 1);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+@keyframes isl-loader-dot {
+  0%,
+  30% {
+    transform: translate(calc(var(--x) * 19px), calc(var(--y) * 19px)) scale(1);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.45, 1);
+  }
+  53%,
+  78% {
+    transform: translate(calc(var(--x) * 41px), calc(var(--y) * 41px)) scale(var(--s));
+    animation-timing-function: cubic-bezier(0.3, 1.35, 0.6, 1);
+  }
+  100% {
+    transform: translate(calc(var(--x) * 19px), calc(var(--y) * 19px)) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .isl-loader-rotor,
+  .isl-loader-dot {
+    animation-duration: 4s;
+  }
+}
