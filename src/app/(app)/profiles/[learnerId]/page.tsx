@@ -6,11 +6,10 @@ import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon } from "@/components/icons"
 import { SkillLevelBadge } from "@/components/skill-level";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
 import { courseCode, shortFormName } from "@/lib/course-code";
-import { bestEvidence, getSkillFramework, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
+import { getSkillFramework, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
 
 type Bullet = {
   label: string;
-  quote: string | null;
   href: string | null;
   tooltip?: string;
   courses: string[];
@@ -47,7 +46,6 @@ function BulletList({ items }: { items: Bullet[] }) {
                   </span>
                   <BulletTags item={item} />
                 </div>
-                {item.quote && <span className="text-foreground-muted">&ldquo;{item.quote}&rdquo;</span>}
               </summary>
               <div className="mt-2 rounded-lg bg-surface-pale p-3">
                 <p className="text-sm leading-relaxed text-foreground">{item.detail.summary}</p>
@@ -85,7 +83,6 @@ function BulletList({ items }: { items: Bullet[] }) {
               )}
               <BulletTags item={item} />
             </div>
-            {item.quote && <span className="text-foreground-muted">&ldquo;{item.quote}&rdquo;</span>}
           </li>
         ),
       )}
@@ -110,10 +107,8 @@ function skillBullets(
       for (const skill of framework.skills) {
         const rating = ratings.skills.find((s) => s.key === skill.key);
         if (rating?.level !== level) continue;
-        const evidence = bestEvidence(rating);
         bullets.push({
           label: skill.name,
-          quote: evidence?.quote ?? null,
           href: null,
           courses: showCourse ? [courseCode(course.name)] : [],
           level: levels.length > 1 ? level : undefined,
@@ -228,7 +223,6 @@ export default async function LearnerProfilePage({
     const source = sourceMap.get(item.trim());
     return {
       label: separatorIndex === -1 ? item : item.slice(0, separatorIndex),
-      quote: separatorIndex === -1 ? null : item.slice(separatorIndex + 2),
       href: source?.processingResultId
         ? `/reviews/${source.processingResultId}${source.signalId ? `#${source.signalId}` : ""}`
         : null,
