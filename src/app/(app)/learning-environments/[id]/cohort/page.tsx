@@ -1,231 +1,197 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AccentCard, Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
-import { ArrowLeftIcon, BuildingIcon, ClipboardCheckIcon, StarIcon, TargetIcon, UserCircleIcon, UserIcon } from "@/components/icons";
+import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { ArrowLeftIcon } from "@/components/icons";
+import { LEVEL_STYLES, SkillLevelBadge, SkillLevelLegend } from "@/components/skill-level";
+import { courseCode } from "@/lib/course-code";
+import {
+  LEVEL_LABEL,
+  getSkillFramework,
+  readSkillRatings,
+  type SkillLevel,
+  type SkillRatings,
+} from "@/lib/skills/frameworks";
 
-type CountedItem = { text: string; learners: string[] };
+const COUNTED_LEVELS: SkillLevel[] = ["strong", "developing", "needs_support", "not_enough_evidence"];
 
-function tally(
-  learnerId: string,
-  learnerName: string,
-  items: string[],
-  seenPerLearner: Map<string, Set<string>>,
-  counts: Map<string, Set<string>>,
-) {
-  const seen = seenPerLearner.get(learnerId) ?? new Set<string>();
-  seenPerLearner.set(learnerId, seen);
-  for (const raw of items) {
-    const text = raw.trim();
-    if (!text || seen.has(text)) continue;
-    seen.add(text);
-    const learners = counts.get(text) ?? new Set<string>();
-    learners.add(learnerName);
-    counts.set(text, learners);
-  }
-}
-
-function toCommonList(counts: Map<string, Set<string>>, minLearners = 2): CountedItem[] {
-  return [...counts.entries()]
-    .filter(([, learners]) => learners.size >= minLearners)
-    .map(([text, learners]) => ({ text, learners: [...learners] }))
-    .sort((a, b) => b.learners.length - a.learners.length);
-}
-
-const PATTERN_TONE = {
-  candidate: "blue",
-  confirmed: "success",
-  unassigned: "neutral",
-  needs_more_evidence: "warning",
-} as const;
-
-export default async function CohortPage({
-  params,
-}: PageProps<"/learning-environments/[id]/cohort">) {
+// Class-wide skill grid: every learner in the course rated on the same fixed
+// skills, so the class can be read at a glance ("most of the class needs
+// support with X", "these learners are behind").
+export default async function ClassSkillsPage({ params }: PageProps<"/learning-environments/[id]/cohort">) {
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: env, error } = await supabase
-    .from("learning_environments")
-    .select("id, name")
-    .eq("id", id)
-    .single();
+  const { data: env, error } = await supabase.from("learning_environments").select("id, name").eq("id", id).single();
   if (error || !env) notFound();
 
-  const [{ data: memberships }, { data: insights }, { data: runs }] = await Promise.all([
-    supabase
-      .from("learner_environments")
-      .select("learner_id, learners(id, display_name)")
-      .eq("environment_id", id),
+  const [{ data: memberships }, { data: insights }] = await Promise.all([
+    supabase.from("learner_environments").select("learners(id, display_name, external_reference)").eq("environment_id", id),
     supabase
       .from("learner_insights")
-      .select("learner_id, observed_strengths, development_needs, learning_preferences, concerns, learners(display_name)")
+      .select("learner_id, approved_output, updated_at")
       .eq("environment_id", id)
-      .eq("status", "approved"),
-    supabase.from("processing_runs").select("id").eq("environment_id", id),
+      .eq("status", "approved")
+      .order("updated_at", { ascending: false }),
   ]);
 
-  const runIds = (runs ?? []).map((r) => r.id);
-  const { data: patterns } = runIds.length
-    ? await supabase
-        .from("learner_patterns")
-        .select("id, pattern_type, assignment_status, learner_id, learners(display_name)")
-        .in("processing_run_id", runIds)
-    : { data: [] as { id: string; pattern_type: string; assignment_status: string; learner_id: string | null; learners: { display_name: string } | null }[] };
+  const framework = getSkillFramework(env.name);
+  const code = courseCode(env.name);
+
+  const ratingsByLearner = new Map<string, SkillRatings>();
+  for (const insight of insights ?? []) {
+    const ratings = readSkillRatings(insight.approved_output);
+    if (ratings && !ratingsByLearner.has(insight.learner_id)) ratingsByLearner.set(insight.learner_id, ratings);
+  }
 
   const learners = (memberships ?? [])
-    .filter((m) => m.learners)
-    .map((m) => ({ id: m.learners!.id, name: m.learners!.display_name }));
+    .map((m) => m.learners)
+    .filter((l): l is { id: string; display_name: string; external_reference: string | null } => Boolean(l))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name));
+  const rated = learners.filter((l) => ratingsByLearner.has(l.id));
+  const notRated = learners.filter((l) => !ratingsByLearner.has(l.id));
 
-  const learnersWithApprovedInsight = new Set((insights ?? []).map((i) => i.learner_id));
-  const learnersNeedingEvidence = learners.filter((l) => !learnersWithApprovedInsight.has(l.id));
+  const levelOf = (learnerId: string, skillKey: string): SkillLevel =>
+    ratingsByLearner.get(learnerId)?.skills.find((s) => s.key === skillKey)?.level ?? "not_enough_evidence";
 
-  const strengthCounts = new Map<string, Set<string>>();
-  const needCounts = new Map<string, Set<string>>();
-  const preferenceCounts = new Map<string, Set<string>>();
-  const concernCounts = new Map<string, Set<string>>();
-  const seenStrength = new Map<string, Set<string>>();
-  const seenNeed = new Map<string, Set<string>>();
-  const seenPreference = new Map<string, Set<string>>();
-  const seenConcern = new Map<string, Set<string>>();
+  const back = (
+    <Link
+      href={`/learning-environments/${env.id}`}
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
+    >
+      <ArrowLeftIcon className="h-4 w-4" />
+      Back to {code}
+    </Link>
+  );
 
-  for (const insight of insights ?? []) {
-    const name = insight.learners?.display_name ?? "Unknown learner";
-    tally(insight.learner_id, name, insight.observed_strengths ?? [], seenStrength, strengthCounts);
-    tally(insight.learner_id, name, insight.development_needs ?? [], seenNeed, needCounts);
-    tally(insight.learner_id, name, insight.learning_preferences ?? [], seenPreference, preferenceCounts);
-    tally(insight.learner_id, name, insight.concerns ?? [], seenConcern, concernCounts);
-  }
-
-  const commonStrengths = toCommonList(strengthCounts);
-  const commonNeeds = toCommonList(needCounts);
-  const commonPreferences = toCommonList(preferenceCounts);
-  const commonConcerns = toCommonList(concernCounts);
-
-  const patternTypeCounts = new Map<string, number>();
-  const assignmentStatusCounts = new Map<string, number>();
-  for (const p of patterns ?? []) {
-    patternTypeCounts.set(p.pattern_type, (patternTypeCounts.get(p.pattern_type) ?? 0) + 1);
-    assignmentStatusCounts.set(p.assignment_status, (assignmentStatusCounts.get(p.assignment_status) ?? 0) + 1);
-  }
-
-  function CommonList({
-    icon,
-    accent,
-    title,
-    items,
-    emptyNote,
-  }: {
-    icon: React.ComponentType<{ className?: string }>;
-    accent: "blue" | "orange" | "purple" | "green";
-    title: string;
-    items: CountedItem[];
-    emptyNote: string;
-  }) {
+  if (!framework) {
     return (
-      <AccentCard icon={icon} accent={accent} title={title}>
-        {items.length === 0 ? (
-          <p className="text-sm text-foreground-muted">{emptyNote}</p>
-        ) : (
-          <ul className="space-y-2.5 text-sm">
-            {items.map((item) => (
-              <li key={item.text}>
-                <p className="text-foreground">{item.text}</p>
-                <p className="mt-0.5 text-xs text-foreground-muted">
-                  {item.learners.length} learners — {item.learners.join(", ")}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </AccentCard>
+      <div>
+        {back}
+        <div className="mt-4">
+          <PageHeader title={`Class skills — ${code}`} />
+        </div>
+        <div className="mt-6">
+          <EmptyState title="No skill list for this course yet" description="Skill ratings are only available for courses with a skill list set up." />
+        </div>
+      </div>
     );
   }
 
   return (
     <div>
-      <Link
-        href={`/learning-environments/${env.id}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to environment
-      </Link>
-
+      {back}
       <div className="mt-4">
         <PageHeader
-          title={`Cohort view — ${env.name}`}
-          icon={BuildingIcon}
-          description="Assembled by aggregating existing per-learner profiles and patterns — there is no dedicated cohort-processing feature yet. An item only appears as 'common' if it recurs for 2 or more learners; nothing here is forced."
+          title={`Class skills — ${code}`}
+          description="Every learner rated on the same skills from their own answers. Click a name to see the evidence behind each rating."
         />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard icon={UserIcon} label="Learners" value={learners.length} />
-        <StatCard icon={UserCircleIcon} iconClassName="bg-violet-50 text-violet-600" label="With an approved insight" value={learnersWithApprovedInsight.size} />
-        <StatCard icon={ClipboardCheckIcon} iconClassName="bg-amber-50 text-amber-600" label="Needs more evidence" value={learnersNeedingEvidence.length} />
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <CommonList icon={StarIcon} accent="blue" title="Common strengths" items={commonStrengths} emptyNote="No strength appears for more than one learner yet — see individual profiles." />
-        <CommonList icon={TargetIcon} accent="orange" title="Common development needs" items={commonNeeds} emptyNote="No development need appears for more than one learner yet." />
-        <CommonList icon={UserIcon} accent="purple" title="Common preferences" items={commonPreferences} emptyNote="No preference appears for more than one learner yet." />
-        <CommonList icon={ClipboardCheckIcon} accent="green" title="Common concerns" items={commonConcerns} emptyNote="No concern appears for more than one learner yet." />
+      <div className="mt-5">
+        <SkillLevelLegend />
       </div>
 
       <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-foreground">Signal mix across the cohort</h2>
-        <p className="mt-1 text-xs text-foreground-muted">
-          Dominant signal type per learner per processing run — a rough read on how much of the class produced a specific
-          reading versus only generic activity evidence.
+        <h2 className="text-base font-semibold text-foreground">Whole class</h2>
+        <p className="mt-1 text-sm text-foreground-muted">
+          {rated.length} of {learners.length} learners rated.
         </p>
-        {patternTypeCounts.size === 0 ? (
-          <p className="mt-3 text-sm text-foreground-muted">No patterns generated for this environment yet.</p>
-        ) : (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {[...patternTypeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-              <li key={type}>
-                <Badge tone="neutral">{type.replace(/_/g, " ")}: {count}</Badge>
+        <ul className="mt-4 space-y-3">
+          {framework.skills.map((skill) => {
+            const counts = Object.fromEntries(COUNTED_LEVELS.map((l) => [l, 0])) as Record<SkillLevel, number>;
+            for (const l of rated) counts[levelOf(l.id, skill.key)]++;
+            const total = rated.length || 1;
+            return (
+              <li key={skill.key} className="grid grid-cols-1 gap-1.5 sm:grid-cols-[14rem_1fr] sm:items-center sm:gap-4">
+                <span className="text-sm font-medium text-foreground" title={skill.description}>
+                  {skill.name}
+                </span>
+                <div>
+                  <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-pale">
+                    {COUNTED_LEVELS.map((level) =>
+                      counts[level] > 0 ? (
+                        <div
+                          key={level}
+                          className={LEVEL_STYLES[level].dot}
+                          style={{ width: `${(counts[level] / total) * 100}%` }}
+                          title={`${LEVEL_LABEL[level]}: ${counts[level]}`}
+                        />
+                      ) : null,
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-foreground-muted">
+                    {COUNTED_LEVELS.filter((level) => counts[level] > 0)
+                      .map((level) => `${LEVEL_LABEL[level]} ${counts[level]}`)
+                      .join(" · ") || "No ratings yet"}
+                  </p>
+                </div>
               </li>
-            ))}
-          </ul>
-        )}
+            );
+          })}
+        </ul>
       </Card>
 
-      <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-foreground">Pattern review status across the cohort</h2>
-        {assignmentStatusCounts.size === 0 ? (
-          <p className="mt-2 text-sm text-foreground-muted">No patterns generated for this environment yet.</p>
-        ) : (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {[...assignmentStatusCounts.entries()].map(([status, count]) => (
-              <li key={status}>
-                <Badge tone={PATTERN_TONE[status as keyof typeof PATTERN_TONE] ?? "neutral"}>
-                  {status.replace(/_/g, " ")}: {count}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
+      <Card className="mt-4 p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs font-medium text-foreground-muted">
+                <th className="sticky left-0 z-10 min-w-[13rem] bg-surface px-5 py-3">Learner</th>
+                {framework.skills.map((skill) => (
+                  <th key={skill.key} className="min-w-[7.5rem] px-3 py-3 align-bottom" title={skill.description}>
+                    {skill.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rated.map((l) => (
+                <tr key={l.id} className="border-b border-border last:border-0">
+                  <td className="sticky left-0 z-10 bg-surface px-5 py-2.5">
+                    <Link href={`/profiles/${l.id}?environment=${env.id}`} className="font-medium text-isl-blue hover:underline">
+                      {l.display_name}
+                    </Link>
+                    {l.external_reference && (
+                      <span className="block text-xs text-foreground-muted">{l.external_reference}</span>
+                    )}
+                  </td>
+                  {framework.skills.map((skill) => (
+                    <td key={skill.key} className="px-3 py-2.5">
+                      <SkillLevelBadge level={levelOf(l.id, skill.key)} compact />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {rated.length === 0 && (
+                <tr>
+                  <td colSpan={framework.skills.length + 1} className="px-5 py-6 text-center text-foreground-muted">
+                    No learner in this course has been rated yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
-      <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-foreground">Learners needing more evidence</h2>
-        {learnersNeedingEvidence.length === 0 ? (
-          <EmptyState title="Every learner has at least one approved insight" description="No one in this cohort is currently unrepresented." />
-        ) : (
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {learnersNeedingEvidence.map((l) => (
+      {notRated.length > 0 && (
+        <Card className="mt-4">
+          <h2 className="text-base font-semibold text-foreground">Not rated yet ({notRated.length})</h2>
+          <p className="mt-1 text-sm text-foreground-muted">
+            No analyzed answers for these learners in {code} yet — open the learner and click Analyze.
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+            {notRated.map((l) => (
               <li key={l.id}>
-                <Link href={`/profiles/${l.id}`} className="text-isl-blue hover:underline">
-                  {l.name}
+                <Link href={`/learners/${l.id}`} className="text-isl-blue hover:underline">
+                  {l.display_name}
                 </Link>
-                <span className="text-foreground-muted"> — no approved insight yet</span>
               </li>
             ))}
           </ul>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }

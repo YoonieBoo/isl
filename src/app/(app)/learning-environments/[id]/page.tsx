@@ -265,7 +265,7 @@ export default async function LearningEnvironmentDetailPage({
           <SecondaryButton>Export approved insights</SecondaryButton>
         </a>
         <Link href={`/learning-environments/${env.id}/cohort`}>
-          <SecondaryButton>Cohort view</SecondaryButton>
+          <SecondaryButton>Class skills</SecondaryButton>
         </Link>
       </div>
     </div>

@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createClient } from "@/lib/supabase/server";
-import { LearnerReportDocument, type LearnerReportData } from "@/lib/pdf/learner-report";
+import { LearnerReportDocument, type LearnerReportData, type ReportCourse } from "@/lib/pdf/learner-report";
 import { generateLearnerOverview } from "@/lib/pdf/learner-overview";
+import { courseCode, shortFormName } from "@/lib/course-code";
+import { getSkillFramework, readSkillRatings, type SkillRatings } from "@/lib/skills/frameworks";
 
 export const dynamic = "force-dynamic";
-
-// "DDI2331 Design Thinking" -> "DDI2331"; names without a course code are kept as-is.
-function courseCode(name: string): string {
-  return name.match(/\b[A-Z]{2,}\s?\d{3,}[A-Z]?\b/)?.[0] ?? name;
-}
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,15 +20,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .eq("learner_id", id);
   let insightsQuery = supabase
     .from("learner_insights")
-    .select("observed_strengths, development_needs, learning_preferences")
+    .select("environment_id, approved_output, updated_at")
     .eq("learner_id", id)
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .order("updated_at", { ascending: false });
   if (environmentId) {
     environmentsQuery = environmentsQuery.eq("environment_id", environmentId);
     insightsQuery = insightsQuery.eq("environment_id", environmentId);
   }
 
-  const [{ data: learner, error }, { data: environments }, { data: approvedInsights }] = await Promise.all([
+  const [{ data: learner, error }, { data: environments }, { data: insights }] = await Promise.all([
     supabase.from("learners").select("display_name, external_reference").eq("id", id).single(),
     environmentsQuery,
     insightsQuery,
@@ -41,36 +39,55 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Learner not found." }, { status: 404 });
   }
 
-  const strengths = [...new Set((approvedInsights ?? []).flatMap((i) => i.observed_strengths))];
-  const developmentNeeds = [...new Set((approvedInsights ?? []).flatMap((i) => i.development_needs))];
-  const learningPreferences = [...new Set((approvedInsights ?? []).flatMap((i) => i.learning_preferences))];
-  const environmentNames = (environments ?? [])
-    .map((e) => e.learning_environments?.name)
-    .filter((n): n is string => Boolean(n))
-    .map(courseCode);
+  const ratingsByEnvironment = new Map<string, SkillRatings>();
+  for (const insight of insights ?? []) {
+    const ratings = readSkillRatings(insight.approved_output);
+    if (ratings && !ratingsByEnvironment.has(insight.environment_id)) {
+      ratingsByEnvironment.set(insight.environment_id, ratings);
+    }
+  }
 
-  const overview = await generateLearnerOverview({
-    learnerName: learner.display_name,
-    strengths,
-    developmentNeeds,
-    learningPreferences,
-    environments: environmentNames,
-  });
+  const courses: ReportCourse[] = (environments ?? [])
+    .filter((e) => e.learning_environments?.name)
+    .map((e) => {
+      const name = e.learning_environments!.name;
+      const framework = getSkillFramework(name);
+      const ratings = ratingsByEnvironment.get(e.environment_id);
+      if (!framework || !ratings) return { code: courseCode(name), overview: null, skills: null };
+      const byKey = new Map(ratings.skills.map((s) => [s.key, s]));
+      return {
+        code: courseCode(name),
+        overview: ratings.overview || null,
+        skills: framework.skills.map((skill) => {
+          const r = byKey.get(skill.key);
+          return {
+            name: skill.name,
+            level: r?.level ?? "not_enough_evidence",
+            summary: r?.summary ?? "No answer clearly showed this skill yet.",
+            quote: r?.evidence[0]?.quote ?? null,
+            form: r?.evidence[0]?.form ? shortFormName(r.evidence[0].form) : null,
+          };
+        }),
+      };
+    })
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  // One course: its own rating overview already summarizes it. Several:
+  // write one combined overview across them.
+  const overview =
+    courses.length === 1
+      ? courses[0].overview
+      : await generateLearnerOverview({ learnerName: learner.display_name, courses });
 
   const data: LearnerReportData = {
     learnerName: learner.display_name,
     externalReference: learner.external_reference,
-    strengths,
-    developmentNeeds,
-    learningPreferences,
-    environments: environmentNames,
+    courses,
     overview,
   };
 
   const buffer = await renderToBuffer(<LearnerReportDocument data={data} />);
-  const fileStem = environmentId && environmentNames[0]
-    ? `${learner.display_name} ${environmentNames[0]}`
-    : learner.display_name;
+  const fileStem = environmentId && courses[0] ? `${learner.display_name} ${courses[0].code}` : learner.display_name;
   const fileName = `${fileStem.replace(/[^a-z0-9]+/gi, "-")}-insights.pdf`;
 
   return new NextResponse(buffer as unknown as BodyInit, {

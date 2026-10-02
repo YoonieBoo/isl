@@ -257,19 +257,25 @@ export async function executeProcessingRun(runId: string) {
     // profile until someone clicks Analyze on each of them individually.
     if (finalStatus === "completed" || finalStatus === "completed_with_warning") {
       const learnerIds = run.learner_id ? [run.learner_id] : [...byLearner.keys()];
-      for (const learnerId of learnerIds) {
-        await autoUpdateEnvironmentInsight(supabase, learnerId, run.environment_id);
-        await logActivity(
-          supabase,
-          user.id,
-          "approved",
-          "learner_insight",
-          learnerId,
-          "Auto-generated insight from Analyze (not human-reviewed)",
-        );
-        revalidatePath(`/profiles/${learnerId}`);
-        revalidatePath(`/learners/${learnerId}`);
-      }
+      // Each update includes one AI skill-rating call, so a whole class is
+      // done a few learners at a time rather than strictly one by one.
+      const queue = [...learnerIds];
+      const worker = async () => {
+        for (let learnerId = queue.shift(); learnerId; learnerId = queue.shift()) {
+          await autoUpdateEnvironmentInsight(supabase, learnerId, run.environment_id);
+          await logActivity(
+            supabase,
+            user.id,
+            "approved",
+            "learner_insight",
+            learnerId,
+            "Auto-generated insight from Analyze (not human-reviewed)",
+          );
+          revalidatePath(`/profiles/${learnerId}`);
+          revalidatePath(`/learners/${learnerId}`);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(5, queue.length) }, worker));
     }
 
     revalidatePath(`/processing-runs/${runId}`);

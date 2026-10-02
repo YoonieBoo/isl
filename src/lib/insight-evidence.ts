@@ -1,5 +1,7 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
+import { getSkillFramework, readSkillRatings } from "@/lib/skills/frameworks";
+import { rateLearnerSkills } from "@/lib/skills/rate-skills";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -309,9 +311,18 @@ export async function autoUpdateEnvironmentInsight(
   environmentId: string,
 ): Promise<void> {
   const source = await gatherAllSignalsForEnvironment(supabase, learnerId, environmentId);
-  if (!source || source.signals.length === 0) return;
+  if (!source) return;
 
   const { data: env } = await supabase.from("learning_environments").select("name").eq("id", environmentId).single();
+
+  // Fixed per-course skill ratings, rated from the learner's raw answers —
+  // what the profile, PDF and class grid show. Free-form signals below are
+  // still kept alongside as supporting detail.
+  const framework = getSkillFramework(env?.name);
+  const skillRatings = framework
+    ? await rateLearnerSkills(supabase, learnerId, source.learnerName, environmentId, framework)
+    : null;
+  if (source.signals.length === 0 && !skillRatings) return;
 
   const observedStrengths = groupByTypeForAuto(source.signals, "strength");
   const developmentNeeds = groupByTypeForAuto(source.signals, "need");
@@ -326,16 +337,6 @@ export async function autoUpdateEnvironmentInsight(
     `${learningPreferences.length} learning preference${learningPreferences.length === 1 ? "" : "s"}, and ` +
     `${concerns.length} concern${concerns.length === 1 ? "" : "s"}.`;
   const highlights = buildInsightHighlights(source.signals.map((s) => s.interpretation_note));
-  const summary = highlights ? `${countsSentence} ${highlights}` : countsSentence;
-
-  const approvedOutput = {
-    title,
-    summary,
-    observed_strengths: observedStrengths,
-    development_needs: developmentNeeds,
-    learning_preferences: learningPreferences,
-    concerns,
-  };
 
   const { data: existing } = await supabase
     .from("learner_insights")
@@ -347,6 +348,31 @@ export async function autoUpdateEnvironmentInsight(
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // If the rating call failed this time, keep the previously stored ratings
+  // rather than wiping them.
+  let ratingsToStore = skillRatings;
+  if (!ratingsToStore && existing) {
+    const { data: previous } = await supabase
+      .from("learner_insights")
+      .select("approved_output")
+      .eq("id", existing.id)
+      .single();
+    ratingsToStore = readSkillRatings(previous?.approved_output);
+  }
+
+  const summary =
+    ratingsToStore?.overview || (highlights ? `${countsSentence} ${highlights}` : countsSentence);
+
+  const approvedOutput = {
+    title,
+    summary,
+    observed_strengths: observedStrengths,
+    development_needs: developmentNeeds,
+    learning_preferences: learningPreferences,
+    concerns,
+    ...(ratingsToStore ? { skill_ratings: ratingsToStore } : {}),
+  };
 
   const row = {
     learner_id: learnerId,

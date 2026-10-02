@@ -1,36 +1,31 @@
 import "server-only";
+import type { ReportCourse } from "@/lib/pdf/learner-report";
+import { LEVEL_LABEL } from "@/lib/skills/frameworks";
 
-// Synthesizes the learner's already-approved, evidence-backed bullets into a
-// short narrative paragraph for the PDF report's overview section. This is
-// explicitly a rewording/summarization task, not a new extraction — the
-// prompt is scoped to only the bullets given, so it can't introduce claims
-// that weren't already reviewed/approved elsewhere in the pipeline.
+// Synthesizes the learner's already-generated, evidence-backed skill ratings
+// into a short narrative paragraph for the PDF report's overview section.
+// This is a rewording/summarization task, not a new judgment — the prompt is
+// scoped to only the ratings given, so it can't introduce new claims.
 export async function generateLearnerOverview(params: {
   learnerName: string;
-  strengths: string[];
-  developmentNeeds: string[];
-  learningPreferences: string[];
-  environments: string[];
+  courses: ReportCourse[];
 }): Promise<string | null> {
-  const hasContent =
-    params.strengths.length + params.developmentNeeds.length + params.learningPreferences.length > 0;
-  if (!hasContent) return null;
+  const rated = params.courses.filter((c) => c.skills && c.skills.length > 0);
+  if (rated.length === 0) return null;
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const bulletBlock = (label: string, items: string[]) =>
-    items.length > 0 ? `${label}:\n${items.map((i) => `- ${i}`).join("\n")}` : `${label}: none recorded`;
+  const courseBlock = rated
+    .map(
+      (c) =>
+        `${c.code}:\n${c.skills!.map((s) => `- ${s.name}: ${LEVEL_LABEL[s.level]} — ${s.summary}`).join("\n")}`,
+    )
+    .join("\n\n");
 
-  const prompt = `You are writing a short overview paragraph for a learner report card. Summarize ONLY the information given below — do not invent new claims, skills, or context not present in these bullet points, and do not add caveats or disclaimers. Write exactly 4-5 sentences in plain, professional, third-person prose describing ${params.learnerName}'s overall profile: their key strengths, main development areas, learning preferences, and which courses they're in. No bullet points, no headers, no markdown — just flowing prose.
+  const prompt = `You are writing a short overview paragraph for a learner report card. Summarize ONLY the skill ratings given below — do not invent new claims, skills, or context, and do not add caveats or disclaimers. Write exactly 4-5 sentences in plain, professional prose describing ${params.learnerName}'s overall profile: what they do well, what to work on, and how this differs between courses if more than one. Refer to the learner by first name or as "they" — never he/she/his/her. No bullet points, no headers, no markdown — just flowing prose.
 
-${bulletBlock("Strengths", params.strengths)}
-
-${bulletBlock("Development needs", params.developmentNeeds)}
-
-${bulletBlock("Learning preferences", params.learningPreferences)}
-
-Courses: ${params.environments.join(", ") || "none recorded"}`;
+${courseBlock}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
