@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeStudentId } from "@/lib/student-id";
 import { Card, EmptyState, PageHeader, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui";
 import { ArrowLeftIcon, BuildingIcon, SearchIcon, UserIcon } from "@/components/icons";
 
@@ -49,8 +50,10 @@ export default async function LearnersPage({
 
   const cleanedTerm = sanitizeSearchTerm(searchTerm);
   if (cleanedTerm) {
+    // IDs are stored without the "u" students often type ("u6620020").
+    const idTerm = normalizeStudentId(cleanedTerm);
     query = query.or(
-      `display_name.ilike.%${cleanedTerm}%,external_reference.ilike.%${cleanedTerm}%,email.ilike.%${cleanedTerm}%`,
+      `display_name.ilike.%${cleanedTerm}%,external_reference.ilike.%${idTerm}%,email.ilike.%${cleanedTerm}%`,
     );
   }
 

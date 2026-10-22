@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_ROUTES = ["/login"];
+// /api/keep-alive is hit by the daily Vercel cron, which has no session.
+const PUBLIC_ROUTES = ["/login", "/api/keep-alive"];
 
 export default async function proxy(request: NextRequest) {
   const { supabaseResponse, user } = await updateSession(request);
