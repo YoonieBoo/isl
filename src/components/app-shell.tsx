@@ -8,7 +8,6 @@ import { signOut } from "@/app/actions/auth";
 import {
   HomeIcon,
   BuildingIcon,
-  UserIcon,
   PlayCircleIcon,
   ChevronUpDownIcon,
   LogOutIcon,
@@ -17,7 +16,6 @@ import {
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
   // Secondary pages — still reachable, but visually de-emphasised.
-  { href: "/learners", label: "Learners", icon: UserIcon, dimmed: true },
   { href: "/learning-environments", label: "Learning Environments", icon: BuildingIcon, dimmed: true },
   { href: "/processing-runs", label: "Processing Runs", icon: PlayCircleIcon, dimmed: true },
 ];
@@ -98,7 +96,8 @@ export function AppShell({
           {NAV_ITEMS.map((item) => {
             const isActive =
               item.href === "/"
-                ? pathname === "/"
+                ? // Student pages are reached from the start page, so it stays highlighted there.
+                  pathname === "/" || pathname.startsWith("/learners") || pathname.startsWith("/profiles")
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
