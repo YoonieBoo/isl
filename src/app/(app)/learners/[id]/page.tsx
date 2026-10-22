@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, Card, EntityHero, IconCard, SecondaryButton, getInitials } from "@/components/ui";
+import { Badge, Card, EntityHero, IconCard, PrimaryButton, SecondaryButton, getInitials } from "@/components/ui";
 import { AnalyzeButton } from "@/app/(app)/learners/[id]/analyze-button";
 import { DraftInsightButton } from "@/app/(app)/learners/[id]/draft-insight-button";
 import { ReviewModal } from "@/app/(app)/reviews/[resultId]/review-modal";
@@ -9,6 +9,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   BuildingIcon,
+  ChevronDownIcon,
   FolderIcon,
   LightBulbIcon,
   ListIcon,
@@ -97,10 +98,10 @@ export default async function LearnerDetailPage({
                 </SecondaryButton>
               </Link>
               <Link href={`/profiles/${learner.id}`}>
-                <SecondaryButton className="bg-surface">
+                <PrimaryButton>
                   <UserCircleIcon className="h-4 w-4" />
                   View insights
-                </SecondaryButton>
+                </PrimaryButton>
               </Link>
             </>
           }
@@ -162,21 +163,30 @@ export default async function LearnerDetailPage({
 
       {unreviewedCandidates.length > 0 && (
         <div className="mt-4">
-          <IconCard
-            icon={LightBulbIcon}
-            iconClassName="bg-amber-50 text-amber-600"
-            title={`Candidate insights (${unreviewedCandidates.length} unreviewed)`}
-            action={
-              reviewAllUrl && (
-                <Link
-                  href={reviewAllUrl}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-isl-blue px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-isl-blue-dark"
-                >
-                  Review all ({unreviewedCandidates.length})
-                </Link>
-              )
-            }
-          >
+          {/* Collapsed by default: per-answer AI output kept for anyone who
+              wants to check it, but not part of the everyday instructor flow. */}
+          <Card>
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                    <LightBulbIcon className="h-5 w-5" />
+                  </span>
+                  <h2 className="text-base font-semibold text-foreground">
+                    Candidate insights ({unreviewedCandidates.length} unreviewed)
+                  </h2>
+                </div>
+                <ChevronDownIcon className="h-5 w-5 shrink-0 text-foreground-muted transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4 border-t border-border pt-4">
+            {reviewAllUrl && (
+              <Link
+                href={reviewAllUrl}
+                className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-isl-blue px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-isl-blue-dark"
+              >
+                Review all ({unreviewedCandidates.length})
+              </Link>
+            )}
             <p className="mb-3 text-xs text-foreground-muted">
               AI-generated, not yet checked by a human — nothing here counts as an approved insight until reviewed.
             </p>
@@ -227,7 +237,9 @@ export default async function LearnerDetailPage({
                 +{remainingCandidateCount} more unreviewed — review all →
               </Link>
             )}
-          </IconCard>
+              </div>
+            </details>
+          </Card>
         </div>
       )}
 
