@@ -74,25 +74,6 @@ export default async function DashboardPage() {
           </Card>
         ))}
       </div>
-
-      <Card className="mt-8">
-        <h2 className="text-base font-semibold text-foreground">How it works</h2>
-        <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-foreground-muted">
-          <li>
-            <span className="text-foreground">Find a student</span> with the search box, or open a course&apos;s student list.
-          </li>
-          <li>
-            <span className="text-foreground">View insights</span> to see their overview, strengths and development focus.
-            Click any skill to see the student&apos;s own words behind it.
-          </li>
-          <li>
-            <span className="text-foreground">Analyze</span> a course to update the insights after new form answers are added.
-          </li>
-          <li>
-            <span className="text-foreground">Edit insights</span> to correct anything the AI got wrong — your changes are kept.
-          </li>
-        </ol>
-      </Card>
     </div>
   );
 }
