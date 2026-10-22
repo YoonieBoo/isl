@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
+import { executeProcessingRun } from "@/app/actions/execute-processing-run";
 
 export type FormState = { error: string } | undefined;
 
@@ -148,7 +149,10 @@ export async function createLearnerAnalysisRun(learnerId: string, environmentId:
       environment_id: environmentId,
       dataset_id: null,
       learner_id: learnerId,
-      status: "draft",
+      // Settings are copied from a run that already completed for this
+      // course, so there is nothing new to confirm — the run starts straight
+      // away instead of stopping at the draft/confirm screens.
+      status: "queued",
       processing_context: priorRun.processing_context,
       processing_configuration: {},
       ai_source: priorRun.ai_source,
@@ -166,9 +170,13 @@ export async function createLearnerAnalysisRun(learnerId: string, environmentId:
     "created",
     "processing_run",
     run.id,
-    "Created on-demand single-learner analysis run (draft)",
+    "Started single-learner analysis",
   );
 
+  // Runs in the background (after()); the learner's insights page shows an
+  // "Updating insights…" message and refreshes itself until it finishes.
+  await executeProcessingRun(run.id);
+
   revalidatePath("/processing-runs");
-  redirect(`/processing-runs/${run.id}`);
+  redirect(`/profiles/${learnerId}?environment=${environmentId}&updating=${run.id}`);
 }

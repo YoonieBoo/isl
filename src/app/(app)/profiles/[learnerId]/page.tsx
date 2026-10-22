@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AccentCard, Badge, Card, PageHeader } from "@/components/ui";
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon } from "@/components/icons";
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, PencilIcon } from "@/components/icons";
+import { AnalysisStatus } from "@/app/(app)/profiles/[learnerId]/analysis-status";
 import { SkillLevelBadge } from "@/components/skill-level";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
 import { readCourseOverview } from "@/lib/skills/overview";
 import { DownloadPdfButton } from "@/app/(app)/profiles/[learnerId]/download-pdf-button";
 import { courseCode, shortFormName } from "@/lib/course-code";
-import { getSkillFramework, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
+import { getSkillFramework, readInsightEdits, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
 
 type Bullet = {
   label: string;
@@ -17,7 +18,7 @@ type Bullet = {
   courses: string[];
   level?: SkillLevel;
   /** Skill bullets open their evidence in place instead of linking away. */
-  detail?: { summary: string; evidence: { quote: string; form: string; href: string | null }[] };
+  detail?: { summary: string; editedBy?: string; evidence: { quote: string; form: string; href: string | null }[] };
 };
 
 function BulletTags({ item }: { item: Bullet }) {
@@ -51,6 +52,9 @@ function BulletList({ items }: { items: Bullet[] }) {
               </summary>
               <div className="mt-2 rounded-lg bg-surface-pale p-3">
                 <p className="text-sm leading-relaxed text-foreground">{item.detail.summary}</p>
+                {item.detail.editedBy && (
+                  <p className="mt-1 text-xs text-foreground-muted">Edited by {item.detail.editedBy}</p>
+                )}
                 <ul className="mt-3 space-y-3 border-l-2 border-border pl-3">
                   {item.detail.evidence.map((e, j) => (
                     <li key={j}>
@@ -116,6 +120,7 @@ function skillBullets(
           level: levels.length > 1 ? level : undefined,
           detail: {
             summary: rating.summary,
+            editedBy: rating.editedBy,
             evidence: rating.evidence.map((e) => ({
               quote: e.quote,
               form: shortFormName(e.form),
@@ -136,7 +141,7 @@ export default async function LearnerProfilePage({
   searchParams,
 }: PageProps<"/profiles/[learnerId]">) {
   const { learnerId } = await params;
-  const { environment: environmentFilter } = await searchParams;
+  const { environment: environmentFilter, updating, saved } = await searchParams;
   const selectedEnvironmentId = typeof environmentFilter === "string" ? environmentFilter : null;
   const supabase = await createClient();
 
@@ -197,9 +202,13 @@ export default async function LearnerProfilePage({
     ? [...approvedInsights].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).find((i) => readCourseOverview(i.approved_output))
     : undefined;
   const overview = latestCourseInsight
-    ? { text: readCourseOverview(latestCourseInsight.approved_output)!, updatedAt: latestCourseInsight.updated_at }
+    ? {
+        text: readCourseOverview(latestCourseInsight.approved_output)!,
+        updatedAt: latestCourseInsight.updated_at,
+        editedBy: readInsightEdits(latestCourseInsight.approved_output).overview_edited_by,
+      }
     : !selectedEnvironmentId && learnerProfile?.summary
-      ? { text: learnerProfile.summary, updatedAt: learnerProfile.updated_at }
+      ? { text: learnerProfile.summary, updatedAt: learnerProfile.updated_at, editedBy: undefined }
       : null;
 
   const showCourse = !selectedEnvironmentId && courses.length > 1;
@@ -278,6 +287,13 @@ export default async function LearnerProfilePage({
           action={
             <div className="flex items-center gap-2">
               <CourseFilter environments={allCourses} selected={selectedEnvironmentId} />
+              <Link
+                href={`/profiles/${learner.id}/edit${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-surface-pale hover:text-foreground"
+              >
+                <PencilIcon className="h-4 w-4" />
+                Edit insights
+              </Link>
               <DownloadPdfButton
                 href={`/api/learners/${learner.id}/report${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
               />
@@ -285,6 +301,13 @@ export default async function LearnerProfilePage({
           }
         />
       </div>
+
+      <AnalysisStatus learnerId={learner.id} runId={typeof updating === "string" ? updating : null} />
+      {saved === "1" && (
+        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-success">
+          Your changes are saved. They will be kept the next time this student is analyzed.
+        </div>
+      )}
 
       <Card className="mt-6">
         <h2 className="text-base font-semibold text-foreground">Overview</h2>
@@ -295,6 +318,7 @@ export default async function LearnerProfilePage({
               <p className="mt-3 flex items-center gap-1.5 text-xs text-foreground-muted">
                 <CalendarIcon className="h-3.5 w-3.5" />
                 Updated {new Date(overview.updatedAt).toLocaleDateString()}
+                {overview.editedBy && ` · edited by ${overview.editedBy}`}
               </p>
             </>
           ) : (

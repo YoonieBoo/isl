@@ -1,6 +1,6 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
-import { getSkillFramework, readSkillRatings } from "@/lib/skills/frameworks";
+import { getSkillFramework, mergeHumanSkillEdits, readInsightEdits, readSkillRatings } from "@/lib/skills/frameworks";
 import { rateLearnerSkills } from "@/lib/skills/rate-skills";
 import { readCourseOverview, refreshLearnerSummary, writeCourseOverview } from "@/lib/skills/overview";
 
@@ -355,19 +355,27 @@ export async function autoUpdateEnvironmentInsight(
   const { data: previous } = existing
     ? await supabase.from("learner_insights").select("approved_output").eq("id", existing.id).single()
     : { data: null };
-  const ratingsToStore = skillRatings ?? readSkillRatings(previous?.approved_output);
+  const previousRatings = readSkillRatings(previous?.approved_output);
+  // Anything a person edited on the profile is kept; the AI only refreshes the rest.
+  const ratingsToStore = skillRatings ? mergeHumanSkillEdits(skillRatings, previousRatings) : previousRatings;
+  const edits = readInsightEdits(previous?.approved_output);
+  const previousPreferences = (previous?.approved_output as { learning_preferences?: string[] } | null)
+    ?.learning_preferences;
+  const preferencesToStore =
+    edits.preferences_edited_by && Array.isArray(previousPreferences) ? previousPreferences : learningPreferences;
 
   // The profile's "Overview": skill ratings plus the AI's other observations.
-  const overview =
-    (ratingsToStore && env?.name
-      ? await writeCourseOverview({
-          learnerName: source.learnerName,
-          courseName: env.name,
-          ratings: ratingsToStore,
-          preferences: learningPreferences,
-          concerns,
-        })
-      : null) ?? readCourseOverview(previous?.approved_output);
+  const overview = edits.overview_edited_by
+    ? readCourseOverview(previous?.approved_output)
+    : ((ratingsToStore && env?.name
+        ? await writeCourseOverview({
+            learnerName: source.learnerName,
+            courseName: env.name,
+            ratings: ratingsToStore,
+            preferences: preferencesToStore,
+            concerns,
+          })
+        : null) ?? readCourseOverview(previous?.approved_output));
 
   const summary = overview || (highlights ? `${countsSentence} ${highlights}` : countsSentence);
 
@@ -376,10 +384,11 @@ export async function autoUpdateEnvironmentInsight(
     summary,
     observed_strengths: observedStrengths,
     development_needs: developmentNeeds,
-    learning_preferences: learningPreferences,
+    learning_preferences: preferencesToStore,
     concerns,
     ...(ratingsToStore ? { skill_ratings: ratingsToStore } : {}),
     ...(overview ? { overview } : {}),
+    ...edits,
   };
 
   const row = {
@@ -390,7 +399,7 @@ export async function autoUpdateEnvironmentInsight(
     summary,
     observed_strengths: observedStrengths,
     development_needs: developmentNeeds,
-    learning_preferences: learningPreferences,
+    learning_preferences: preferencesToStore,
     concerns,
     interpretation_boundary: null,
     status: "approved" as const,

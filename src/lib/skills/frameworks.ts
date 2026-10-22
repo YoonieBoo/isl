@@ -196,7 +196,43 @@ export type SkillRating = {
   level: SkillLevel;
   summary: string;
   evidence: SkillEvidence[];
+  /** Set when a person changed the level or reason; re-analysis keeps their version. */
+  editedBy?: string;
+  editedAt?: string;
 };
+
+// Human edits stored alongside the AI output on the course insight
+// (learner_insights.approved_output). Re-analysis keeps anything edited.
+export type InsightEdits = {
+  overview_edited_by?: string;
+  overview_edited_at?: string;
+  preferences_edited_by?: string;
+  preferences_edited_at?: string;
+};
+
+const EDIT_KEYS = ["overview_edited_by", "overview_edited_at", "preferences_edited_by", "preferences_edited_at"] as const;
+
+/** Only the edit markers, never the rest of the stored output. */
+export function readInsightEdits(approvedOutput: unknown): InsightEdits {
+  const source = (approvedOutput ?? {}) as Record<string, unknown>;
+  const edits: InsightEdits = {};
+  for (const key of EDIT_KEYS) if (typeof source[key] === "string") edits[key] = source[key] as string;
+  return edits;
+}
+
+/** Keeps every skill a person edited, taking the AI's fresh rating for the rest. */
+export function mergeHumanSkillEdits(fresh: SkillRatings, previous: SkillRatings | null): SkillRatings {
+  if (!previous) return fresh;
+  const edited = new Map(previous.skills.filter((s) => s.editedBy).map((s) => [s.key, s]));
+  if (edited.size === 0) return fresh;
+  return {
+    ...fresh,
+    skills: fresh.skills.map((s) => {
+      const human = edited.get(s.key);
+      return human ? { ...s, level: human.level, summary: human.summary, editedBy: human.editedBy, editedAt: human.editedAt } : s;
+    }),
+  };
+}
 
 export type SkillRatings = {
   courseCode: string;
