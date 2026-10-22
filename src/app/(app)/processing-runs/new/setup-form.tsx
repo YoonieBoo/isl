@@ -135,7 +135,7 @@ export function SetupForm({
         <h2 className="text-sm font-semibold text-foreground">AI configuration</h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Adapter" htmlFor="aiSource" required>
-            <Select id="aiSource" name="aiSource" defaultValue="mock">
+            <Select id="aiSource" name="aiSource" defaultValue="external_ai">
               {AI_SOURCES.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}

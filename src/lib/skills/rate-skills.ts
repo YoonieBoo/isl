@@ -8,6 +8,7 @@ import {
   type SkillRating,
   type SkillRatings,
 } from "@/lib/skills/frameworks";
+import { NON_ANSWER_FIELD, isUsableAnswer } from "@/lib/answer-fields";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -16,20 +17,11 @@ const MAX_ANSWER_CHARS = 700;
 const MAX_TOTAL_CHARS = 60_000;
 const MAX_QUOTES_PER_SKILL = 3;
 
-// Form columns that identify the learner or are bookkeeping, not answers.
-const NON_ANSWER_FIELD = /timestamp|e-?mail|\bname\b|student\s*(id|code)|^id$|\bscore\b|\bsection\b|^\+/i;
 // DDI1311's evidence sheet stores one answer per row with metadata columns.
 const EVIDENCE_SHEET_QUESTION = "question_prompt";
 const EVIDENCE_SHEET_ANSWER = "raw_evidence";
 
 type Answer = { id: string; form: string; question: string; text: string; processingResultId: string | null };
-
-function isUsableAnswer(text: string): boolean {
-  const t = text.trim();
-  if (!t || /^(-|n\/?a|none|no|yes)$/i.test(t)) return false;
-  if (/^https?:\/\/\S+$/.test(t)) return false; // bare upload links
-  return true;
-}
 
 async function gatherAnswers(supabase: Supabase, learnerId: string, environmentId: string): Promise<Answer[]> {
   const records: {

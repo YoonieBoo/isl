@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { IslLoader } from "@/components/isl-loader";
+import Link from "next/link";
 import { courseCode } from "@/lib/course-code";
+import { getSkillFramework } from "@/lib/skills/frameworks";
 
 // Shown after clicking Analyze. The run finishes first and the student's
 // insights are rewritten just after, so "done" means the insight was updated
@@ -21,7 +23,7 @@ export async function AnalysisStatus({ learnerId, runId }: { learnerId: string; 
 
   const { data: run } = await supabase
     .from("processing_runs")
-    .select("status, completed_at, environment_id, learner_id, learning_environments(name)")
+    .select("status, completed_at, environment_id, learner_id, learning_environments(name, skill_framework)")
     .eq("id", runId)
     .maybeSingle();
   if (!run || run.learner_id !== learnerId) return null;
@@ -49,6 +51,18 @@ export async function AnalysisStatus({ learnerId, runId }: { learnerId: string; 
       .limit(1)
       .maybeSingle();
     done = isFinished(run.completed_at, insight?.updated_at ?? null);
+  }
+
+  if (done && !getSkillFramework(run.learning_environments)) {
+    return (
+      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-warning">
+        {course}&apos;s answers were read, but this course has no skills set up yet, so there is nothing to rate.{" "}
+        <Link href={`/learning-environments/${run.environment_id}`} className="font-medium underline">
+          Add the course&apos;s skills
+        </Link>
+        , then click “Update all students”.
+      </div>
+    );
   }
 
   if (done) {

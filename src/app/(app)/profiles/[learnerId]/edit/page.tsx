@@ -15,13 +15,13 @@ export default async function EditInsightsPage({ params, searchParams }: PagePro
 
   const [{ data: learner }, { data: environments }] = await Promise.all([
     supabase.from("learners").select("id, display_name").eq("id", learnerId).single(),
-    supabase.from("learner_environments").select("learning_environments(id, name)").eq("learner_id", learnerId),
+    supabase.from("learner_environments").select("learning_environments(id, name, skill_framework)").eq("learner_id", learnerId),
   ]);
   if (!learner) notFound();
 
   const courses = (environments ?? [])
     .map((e) => e.learning_environments)
-    .filter((e): e is { id: string; name: string } => Boolean(e))
+    .filter((e): e is NonNullable<typeof e> => Boolean(e))
     .sort((a, b) => a.name.localeCompare(b.name));
   // Edits are per course; default to the first course.
   const environmentId = typeof environment === "string" ? environment : null;
@@ -41,7 +41,7 @@ export default async function EditInsightsPage({ params, searchParams }: PagePro
         .maybeSingle()
     : { data: null };
 
-  const framework = course ? getSkillFramework(course.name) : null;
+  const framework = course ? getSkillFramework(course) : null;
   const ratings = readSkillRatings(insight?.approved_output);
   const preferences = ((insight?.approved_output as { learning_preferences?: string[] } | null)?.learning_preferences ?? [])
     .map((p) => (p.includes(": ") ? p.slice(0, p.indexOf(": ")) : p));

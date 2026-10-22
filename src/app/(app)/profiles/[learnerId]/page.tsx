@@ -99,7 +99,7 @@ function BulletList({ items }: { items: Bullet[] }) {
 // Strengths and development focus come from the course's fixed skill ratings
 // (see lib/skills) — every learner in a course is judged on the same skills.
 function skillBullets(
-  courses: { id: string; name: string }[],
+  courses: { id: string; name: string; skill_framework?: unknown }[],
   ratingsByEnvironment: Map<string, SkillRatings>,
   levels: SkillLevel[],
   showCourse: boolean,
@@ -107,7 +107,7 @@ function skillBullets(
   const bullets: Bullet[] = [];
   for (const level of levels) {
     for (const course of courses) {
-      const framework = getSkillFramework(course.name);
+      const framework = getSkillFramework(course);
       const ratings = ratingsByEnvironment.get(course.id);
       if (!framework || !ratings) continue;
       for (const skill of framework.skills) {
@@ -156,7 +156,7 @@ export default async function LearnerProfilePage({
       supabase.from("learners").select("*").eq("id", learnerId).single(),
       supabase
         .from("learner_environments")
-        .select("learning_environments(id, name)")
+        .select("learning_environments(id, name, skill_framework)")
         .eq("learner_id", learnerId),
       supabase
         .from("learner_insights")
@@ -178,7 +178,7 @@ export default async function LearnerProfilePage({
 
   const allCourses = (environments ?? [])
     .map((e) => e.learning_environments)
-    .filter((e): e is { id: string; name: string } => Boolean(e))
+    .filter((e): e is NonNullable<typeof e> => Boolean(e))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // A course filter (?environment=<id>) scopes every card below to just that
@@ -323,7 +323,9 @@ export default async function LearnerProfilePage({
             </>
           ) : (
             <p className="text-sm text-foreground-muted">
-              No overview yet. Open the learner record and click Analyze for a course.
+              {courses.length > 0 && courses.every((c) => !getSkillFramework(c))
+                ? "This course has no skills set up yet, so there is nothing to rate. Add them on the course page, then click “Update all students”."
+                : "No overview yet. Open the learner record and click Analyze for a course."}
             </p>
           )}
         </div>
@@ -347,7 +349,7 @@ export default async function LearnerProfilePage({
                   <Link href={`/learning-environments/${c.id}`} className="text-isl-blue hover:underline">
                     {c.name}
                   </Link>
-                  {getSkillFramework(c.name) && (
+                  {getSkillFramework(c) && (
                     <Link
                       href={`/learning-environments/${c.id}/cohort`}
                       className="inline-flex items-center gap-1 text-xs font-medium text-foreground-muted hover:text-isl-blue hover:underline"

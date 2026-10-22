@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
 import { executeProcessingRun } from "@/app/actions/execute-processing-run";
+import { resolveCourseRunSettings } from "@/lib/processing/course-settings";
 
 export type FormState = { error: string } | undefined;
 
@@ -33,7 +34,7 @@ export async function createProcessingRun(
   const environmentId = String(formData.get("environmentId") ?? "").trim();
   const datasetId = String(formData.get("datasetId") ?? "").trim();
   const learnerId = String(formData.get("learnerId") ?? "").trim();
-  const aiSource = String(formData.get("aiSource") ?? "mock").trim();
+  const aiSource = String(formData.get("aiSource") ?? "external_ai").trim();
   const modelOrTool = String(formData.get("modelOrTool") ?? "").trim();
 
   if (!environmentId || (!datasetId && !learnerId)) {
@@ -127,21 +128,9 @@ export async function createLearnerAnalysisRun(learnerId: string, environmentId:
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
 
-  // Only clone from a run that actually finished — a draft's context/adapter
-  // was never confirmed, and cloning one (e.g. a leftover test draft left on
-  // "mock") would silently run real learner data through the wrong adapter.
-  const { data: priorRun } = await supabase
-    .from("processing_runs")
-    .select("processing_context, ai_source, model_or_tool")
-    .eq("environment_id", environmentId)
-    .in("status", ["completed", "completed_with_warning"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!priorRun) {
-    redirect(`/processing-runs/new?environment=${environmentId}&learner=${learnerId}`);
-  }
+  // Reuses the course's last finished run settings, or fills in sensible
+  // defaults for a brand-new course — never the technical setup form.
+  const priorRun = await resolveCourseRunSettings(supabase, environmentId);
 
   const { data: run, error } = await supabase
     .from("processing_runs")
@@ -149,9 +138,9 @@ export async function createLearnerAnalysisRun(learnerId: string, environmentId:
       environment_id: environmentId,
       dataset_id: null,
       learner_id: learnerId,
-      // Settings are copied from a run that already completed for this
-      // course, so there is nothing new to confirm — the run starts straight
-      // away instead of stopping at the draft/confirm screens.
+      // Settings come from the course itself (see resolveCourseRunSettings),
+      // so there is nothing to confirm — the run starts straight away
+      // instead of stopping at the draft/confirm screens.
       status: "queued",
       processing_context: priorRun.processing_context,
       processing_configuration: {},

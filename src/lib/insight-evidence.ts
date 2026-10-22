@@ -314,12 +314,12 @@ export async function autoUpdateEnvironmentInsight(
   const source = await gatherAllSignalsForEnvironment(supabase, learnerId, environmentId);
   if (!source) return;
 
-  const { data: env } = await supabase.from("learning_environments").select("name").eq("id", environmentId).single();
+  const { data: env } = await supabase.from("learning_environments").select("name, skill_framework").eq("id", environmentId).single();
 
   // Fixed per-course skill ratings, rated from the learner's raw answers —
   // what the profile, PDF and class grid show. Free-form signals below are
   // still kept alongside as supporting detail.
-  const framework = getSkillFramework(env?.name);
+  const framework = getSkillFramework(env);
   const skillRatings = framework
     ? await rateLearnerSkills(supabase, learnerId, source.learnerName, environmentId, framework)
     : null;
@@ -371,6 +371,7 @@ export async function autoUpdateEnvironmentInsight(
         ? await writeCourseOverview({
             learnerName: source.learnerName,
             courseName: env.name,
+            framework,
             ratings: ratingsToStore,
             preferences: preferencesToStore,
             concerns,

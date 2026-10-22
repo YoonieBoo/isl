@@ -15,7 +15,7 @@ export default async function DashboardPage() {
 
   const [{ data: profile }, { data: environments }, { data: links }] = await Promise.all([
     supabase.from("profiles").select("display_name").eq("id", user?.id ?? "").maybeSingle(),
-    supabase.from("learning_environments").select("id, name").eq("status", "active").order("name"),
+    supabase.from("learning_environments").select("id, name, skill_framework").eq("status", "active").order("name"),
     supabase.from("learner_environments").select("environment_id"),
   ]);
 
@@ -56,7 +56,7 @@ export default async function DashboardPage() {
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 text-sm">
-              {getSkillFramework(env.name) && (
+              {getSkillFramework(env) && (
                 <Link
                   href={`/learning-environments/${env.id}/cohort`}
                   className="inline-flex items-center justify-between font-medium text-isl-blue hover:underline"

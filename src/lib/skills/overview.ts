@@ -1,6 +1,6 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
-import { LEVEL_LABEL, getSkillFramework, readSkillRatings, type SkillRatings } from "@/lib/skills/frameworks";
+import { LEVEL_LABEL, getSkillFramework, readSkillRatings, type SkillFramework, type SkillRatings } from "@/lib/skills/frameworks";
 import { courseCode } from "@/lib/course-code";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -42,8 +42,8 @@ async function complete(prompt: string): Promise<string | null> {
   return null;
 }
 
-function skillLines(courseName: string, ratings: SkillRatings): string {
-  const framework = getSkillFramework(courseName);
+function skillLines(courseName: string, ratings: SkillRatings, stored?: SkillFramework | null): string {
+  const framework = stored ?? getSkillFramework(courseName);
   return ratings.skills
     .map((s) => {
       const name = framework?.skills.find((k) => k.key === s.key)?.name ?? s.key;
@@ -55,6 +55,7 @@ function skillLines(courseName: string, ratings: SkillRatings): string {
 export async function writeCourseOverview(params: {
   learnerName: string;
   courseName: string;
+  framework?: SkillFramework | null;
   ratings: SkillRatings;
   preferences: string[];
   concerns: string[];
@@ -65,7 +66,7 @@ export async function writeCourseOverview(params: {
 ${RULES}
 
 SKILL RATINGS (fixed course skills, rated from the learner's own answers):
-${skillLines(params.courseName, params.ratings)}
+${skillLines(params.courseName, params.ratings, params.framework)}
 
 OTHER OBSERVATIONS — learning preferences ("label: quote"):
 ${list(params.preferences)}

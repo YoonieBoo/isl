@@ -176,10 +176,38 @@ const FRAMEWORKS: SkillFramework[] = [
   },
 ];
 
-export function getSkillFramework(environmentName: string | null | undefined): SkillFramework | null {
-  if (!environmentName) return null;
-  const code = courseCode(environmentName);
+type CourseLike = { name: string; skill_framework?: unknown } | string | null | undefined;
+
+/** Skills typed in on the course page, if any. */
+export function readStoredSkills(value: unknown): Skill[] | null {
+  if (!Array.isArray(value)) return null;
+  const skills = value
+    .filter((s): s is { key: string; name: string; description?: string } =>
+      Boolean(s) && typeof s.key === "string" && typeof s.name === "string" && s.name.trim() !== "")
+    .map((s) => ({
+      key: s.key,
+      name: s.name.trim(),
+      description: (s.description ?? "").trim(),
+      lookFor: (s.description ?? "").trim() || `Any answer that shows ${s.name.trim().toLowerCase()}.`,
+    }));
+  return skills.length > 0 ? skills : null;
+}
+
+// A course's skills: the list saved on its course page first, otherwise the
+// built-in list for the three Q3 courses. Accepts the course row (preferred,
+// so saved skills are seen) or just its name.
+export function getSkillFramework(course: CourseLike): SkillFramework | null {
+  if (!course) return null;
+  const name = typeof course === "string" ? course : course.name;
+  const code = courseCode(name);
+  const stored = typeof course === "string" ? null : readStoredSkills(course.skill_framework);
+  if (stored) return { courseCode: code, skills: stored };
   return FRAMEWORKS.find((f) => f.courseCode === code) ?? null;
+}
+
+/** Stable key for a skill typed on the course page, e.g. "Sprint planning" -> "sprint_planning". */
+export function skillKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60) || "skill";
 }
 
 // --- Stored rating shape (kept in learner_insights.approved_output.skill_ratings) ---

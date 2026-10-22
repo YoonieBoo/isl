@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   let environmentsQuery = supabase
     .from("learner_environments")
-    .select("environment_id, learning_environments(name)")
+    .select("environment_id, learning_environments(name, skill_framework)")
     .eq("learner_id", id);
   let insightsQuery = supabase
     .from("learner_insights")
@@ -48,7 +48,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const courses = (environments ?? [])
     .filter((e) => e.learning_environments?.name)
-    .map((e) => ({ id: e.environment_id, name: e.learning_environments!.name }))
+    .map((e) => ({ id: e.environment_id, name: e.learning_environments!.name, skill_framework: e.learning_environments!.skill_framework }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const multipleCourses = courses.length > 1;
 
@@ -58,7 +58,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const out: string[] = [];
     for (const level of levels) {
       for (const course of courses) {
-        const framework = getSkillFramework(course.name);
+        const framework = getSkillFramework(course);
         const ratings = ratingsByEnvironment.get(course.id);
         if (!framework || !ratings) continue;
         for (const skill of framework.skills) {

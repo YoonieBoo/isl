@@ -3,6 +3,11 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, EntityHero, IconCard, PrimaryButton, SecondaryButton, StatCard } from "@/components/ui";
 import { ArchiveButton } from "@/app/(app)/learning-environments/[id]/archive-button";
+import { CourseSkillsEditor } from "@/app/(app)/learning-environments/[id]/course-skills-editor";
+import { UpdateAllStudents } from "@/app/(app)/learning-environments/[id]/update-all-students";
+import { AutoRefresh } from "@/components/auto-refresh";
+import { courseCode } from "@/lib/course-code";
+import { getSkillFramework } from "@/lib/skills/frameworks";
 import {
   BookOpenIcon,
   BuildingIcon,
@@ -14,10 +19,15 @@ import {
   UserIcon,
 } from "@/components/icons";
 
+// "Update all students" runs one server request per student from this page.
+export const maxDuration = 300;
+
 export default async function LearningEnvironmentDetailPage({
   params,
+  searchParams,
 }: PageProps<"/learning-environments/[id]">) {
   const { id } = await params;
+  const { uploaded } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: env, error }, { count: learnerCount }, { data: datasets }, { data: runs }, { data: insights }] =
@@ -27,12 +37,16 @@ export default async function LearningEnvironmentDetailPage({
         .from("learner_environments")
         .select("id", { count: "exact", head: true })
         .eq("environment_id", id),
-      supabase.from("datasets").select("id, record_count").eq("environment_id", id),
+      supabase.from("datasets").select("id, record_count, validation_status").eq("environment_id", id),
       supabase.from("processing_runs").select("id").eq("environment_id", id),
       supabase.from("learner_insights").select("id, status").eq("environment_id", id),
     ]);
 
   if (error || !env) notFound();
+
+  const framework = getSkillFramework(env);
+  const matchingPending = (datasets ?? []).some((d) => d.validation_status === "pending");
+  const uploadedCount = typeof uploaded === "string" ? Number(uploaded) || 0 : 0;
 
   // Validation coverage funnel (spec: boss feedback asked reporting to
   // distinguish uploaded vs. processed vs. interpreted vs. human-reviewed,
@@ -136,6 +150,55 @@ export default async function LearningEnvironmentDetailPage({
           </>
         }
       />
+
+      <AutoRefresh active={matchingPending} intervalMs={4000} />
+      {uploadedCount > 0 && (
+        <div
+          className={`mt-4 rounded-lg border p-3 text-sm ${
+            matchingPending ? "border-isl-blue-pale bg-isl-blue-pale/50 text-foreground" : "border-green-200 bg-green-50 text-success"
+          }`}
+        >
+          {matchingPending
+            ? `Uploaded ${uploadedCount} file${uploadedCount === 1 ? "" : "s"}. Matching students… this page refreshes by itself.`
+            : `Uploaded ${uploadedCount} file${uploadedCount === 1 ? "" : "s"} and matched the students. Next: click “Update all students”.`}
+        </div>
+      )}
+
+      <div className="mt-6">
+        <IconCard icon={LightBulbIcon} iconClassName="bg-amber-50 text-amber-600" title="Skills">
+          <p className="mb-4 text-sm text-foreground-muted">
+            Every student in {courseCode(env.name)} is rated on these same skills, so they can be compared across the class.
+          </p>
+          <CourseSkillsEditor
+            environmentId={env.id}
+            initialSkills={(framework?.skills ?? []).map((s) => ({ key: s.key, name: s.name, description: s.description }))}
+          />
+        </IconCard>
+      </div>
+
+      <div className="mt-4">
+        <IconCard icon={UserIcon} title="Students' answers">
+          <ol className="mb-4 list-decimal space-y-1 pl-5 text-sm text-foreground-muted">
+            <li>
+              <Link href={`/datasets/new?environment=${env.id}&returnTo=/learning-environments/${env.id}`} className="font-medium text-isl-blue hover:underline">
+                Upload a form file
+              </Link>{" "}
+              (the Google Form responses, as CSV or Excel).
+            </li>
+            <li>Click “Update all students” to read the new answers and update everyone&apos;s insights.</li>
+          </ol>
+          <UpdateAllStudents
+            environmentId={env.id}
+            disabledReason={
+              !framework
+                ? "Add and save the course's skills above first."
+                : matchingPending
+                  ? "Still matching students from your upload…"
+                  : null
+            }
+          />
+        </IconCard>
+      </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={UserIcon} label="Learners" value={learnerCount ?? 0} href={`/learners?environment=${env.id}`} />
@@ -258,7 +321,7 @@ export default async function LearningEnvironmentDetailPage({
         <Link href={`/learners/new?environment=${env.id}`}>
           <PrimaryButton>Add learner</PrimaryButton>
         </Link>
-        <Link href={`/datasets/new?environment=${env.id}`}>
+        <Link href={`/datasets/new?environment=${env.id}&returnTo=/learning-environments/${env.id}`}>
           <SecondaryButton>Upload dataset</SecondaryButton>
         </Link>
         <a href={`/api/export/insights?environment=${env.id}`}>

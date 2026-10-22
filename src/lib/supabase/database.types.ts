@@ -548,6 +548,7 @@ export type Database = {
           id: string
           learning_objectives: string | null
           name: string
+          skill_framework: Json | null
           organisation_name: string
           status: Database["public"]["Enums"]["learning_environment_status"]
           updated_at: string
@@ -561,6 +562,7 @@ export type Database = {
           id?: string
           learning_objectives?: string | null
           name: string
+          skill_framework?: Json | null
           organisation_name: string
           status?: Database["public"]["Enums"]["learning_environment_status"]
           updated_at?: string
@@ -574,6 +576,7 @@ export type Database = {
           id?: string
           learning_objectives?: string | null
           name?: string
+          skill_framework?: Json | null
           organisation_name?: string
           status?: Database["public"]["Enums"]["learning_environment_status"]
           updated_at?: string

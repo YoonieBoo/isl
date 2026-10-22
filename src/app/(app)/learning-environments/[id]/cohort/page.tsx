@@ -22,7 +22,7 @@ export default async function ClassSkillsPage({ params }: PageProps<"/learning-e
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: env, error } = await supabase.from("learning_environments").select("id, name").eq("id", id).single();
+  const { data: env, error } = await supabase.from("learning_environments").select("id, name, skill_framework").eq("id", id).single();
   if (error || !env) notFound();
 
   const [{ data: memberships }, { data: insights }] = await Promise.all([
@@ -35,7 +35,7 @@ export default async function ClassSkillsPage({ params }: PageProps<"/learning-e
       .order("updated_at", { ascending: false }),
   ]);
 
-  const framework = getSkillFramework(env.name);
+  const framework = getSkillFramework(env);
   const code = courseCode(env.name);
 
   const ratingsByLearner = new Map<string, SkillRatings>();
