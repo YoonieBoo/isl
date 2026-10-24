@@ -28,9 +28,8 @@ export async function signIn(
   redirect(next || "/");
 }
 
-const SIGN_UP_ROLES = ["admin", "analyst", "educator", "learner"] as const;
-type SignUpRole = (typeof SIGN_UP_ROLES)[number];
-
+// Everyone who signs up becomes an educator (the profiles.role default);
+// only an admin can change roles — see migration 0018_lock_roles.
 export async function signUp(
   _prevState: AuthFormState,
   formData: FormData,
@@ -38,11 +37,6 @@ export async function signUp(
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const displayName = String(formData.get("displayName") ?? "");
-  const role = String(formData.get("role") ?? "") as SignUpRole;
-
-  if (!SIGN_UP_ROLES.includes(role)) {
-    return { error: "Choose a role." };
-  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
@@ -56,11 +50,6 @@ export async function signUp(
   }
   if (!data.user) {
     return { error: "Account could not be created." };
-  }
-
-  const { error: roleError } = await supabase.from("profiles").update({ role }).eq("id", data.user.id);
-  if (roleError) {
-    return { error: `Account created, but the role couldn't be saved: ${roleError.message}` };
   }
 
   revalidatePath("/", "layout");

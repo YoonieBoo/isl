@@ -3,7 +3,6 @@
 import { useActionState, useState } from "react";
 import { signIn, signUp, type AuthFormState } from "@/app/actions/auth";
 import { IslLogo } from "@/components/isl-logo";
-import { ChevronDownIcon } from "@/components/icons";
 
 export function LoginForm({ next }: { next: string }) {
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
@@ -46,32 +45,6 @@ export function LoginForm({ next }: { next: string }) {
                   required
                   className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-isl-blue"
                 />
-              </div>
-            )}
-
-            {mode === "sign-up" && (
-              <div>
-                <label htmlFor="role" className="block text-sm font-medium text-foreground">
-                  Role
-                </label>
-                <div className="relative mt-1">
-                <select
-                  id="role"
-                  name="role"
-                  required
-                  defaultValue=""
-                  className="w-full appearance-none rounded-lg border border-border bg-surface py-2 pl-3 pr-9 text-sm outline-none focus:border-isl-blue"
-                >
-                  <option value="" disabled>
-                    Select a role
-                  </option>
-                  <option value="admin">Admin — project owner</option>
-                  <option value="analyst">Analyst — research / data</option>
-                  <option value="educator">Educator — instructor / reviewer</option>
-                  <option value="learner">Learner — student</option>
-                </select>
-                <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-muted" />
-                </div>
               </div>
             )}
 
