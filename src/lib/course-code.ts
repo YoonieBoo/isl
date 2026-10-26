@@ -11,7 +11,8 @@ export function shortFormName(name: string): string {
     .replace(/^\s*\d+\.\s*/, "")
     .replace(/\s*\(Responses\)/gi, "")
     .replace(/\s*\(\d+\)\s*$/, "")
-    .replace(/^\s*[A-Z]{2,}\s?\d{3,}[A-Z]?\s*[—–-]?\s*/, "")
+    .replace(/^\s*[A-Z]{2,}\s?\d{3,}[A-Z]?\s*[—–_-]?\s*/, "")
+    .replace(/_/g, " ") // uploaded file names often use underscores
     .replace(/\s+/g, " ")
     .trim();
   return cleaned || name;
