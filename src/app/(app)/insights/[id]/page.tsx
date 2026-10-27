@@ -1,9 +1,8 @@
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { StatusActions } from "@/app/(app)/insights/[id]/status-actions";
-import { ArrowLeftIcon } from "@/components/icons";
 
 const STATUS_TONE = {
   candidate: "blue",
@@ -86,13 +85,7 @@ export default async function InsightDetailPage({
   return (
     <div>
       {insight.learners?.id && (
-        <Link
-          href={`/learners/${insight.learners.id}`}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back to {insight.learners.display_name}
-        </Link>
+        <BackLink fallbackHref={`/learners/${insight.learners.id}`} />
       )}
 
       <div className="mt-4">

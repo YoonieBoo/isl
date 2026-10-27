@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, EntityHero, IconCard, PrimaryButton, SecondaryButton, getInitials } from "@/components/ui";
@@ -6,7 +7,6 @@ import { AnalyzeButton } from "@/app/(app)/learners/[id]/analyze-button";
 import { DraftInsightButton } from "@/app/(app)/learners/[id]/draft-insight-button";
 import { ReviewModal } from "@/app/(app)/reviews/[resultId]/review-modal";
 import {
-  ArrowLeftIcon,
   ArrowRightIcon,
   BuildingIcon,
   ChevronDownIcon,
@@ -75,13 +75,7 @@ export default async function LearnerDetailPage({
   return (
     <div>
       <AutoRefresh active={uploadedCount !== undefined} />
-      <Link
-        href="/learners"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to learners
-      </Link>
+      <BackLink fallbackHref="/" />
 
       <div className="mt-4">
         <EntityHero

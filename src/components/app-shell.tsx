@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IslLogo } from "@/components/isl-logo";
 import { signOut } from "@/app/actions/auth";
+import { NAV_COUNT_KEY } from "@/components/back-link";
 import {
   HomeIcon,
   BuildingIcon,
@@ -83,6 +84,20 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+
+  // Lets BackLink know whether this tab has an earlier page in the app to
+  // return to (see components/back-link.tsx).
+  useEffect(() => {
+    try {
+      // Only a real page change counts (not a re-render or reload of the same page).
+      if (sessionStorage.getItem(`${NAV_COUNT_KEY}-last`) !== pathname) {
+        sessionStorage.setItem(`${NAV_COUNT_KEY}-last`, pathname);
+        sessionStorage.setItem(NAV_COUNT_KEY, String(Number(sessionStorage.getItem(NAV_COUNT_KEY) ?? 0) + 1));
+      }
+    } catch {
+      // Storage blocked: BackLink just uses its fallback page.
+    }
+  }, [pathname]);
 
   return (
     <div className="flex h-screen w-full">

@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeStudentId } from "@/lib/student-id";
 import { Card, EmptyState, PageHeader, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui";
-import { ArrowLeftIcon, BuildingIcon, SearchIcon, UserIcon } from "@/components/icons";
+import { BuildingIcon, SearchIcon, UserIcon } from "@/components/icons";
 
 // PostgREST's .or() filter string treats "," and "()" as syntax, not
 // literal characters — strip them so a search term can't break the filter
@@ -87,13 +88,9 @@ export default async function LearnersPage({
   return (
     <div>
       {environmentId && (
-        <Link
-          href="/learners"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          All courses
-        </Link>
+        <div className="mb-4">
+          <BackLink fallbackHref="/" />
+        </div>
       )}
 
       <PageHeader

@@ -1,8 +1,7 @@
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, PageHeader } from "@/components/ui";
-import { ArrowLeftIcon } from "@/components/icons";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
 import { EditInsightsForm } from "@/app/(app)/profiles/[learnerId]/edit/edit-form";
 import { getSkillFramework, readSkillRatings } from "@/lib/skills/frameworks";
@@ -48,13 +47,7 @@ export default async function EditInsightsPage({ params, searchParams }: PagePro
 
   return (
     <div>
-      <Link
-        href={`/profiles/${learnerId}${course ? `?environment=${course.id}` : ""}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to insights
-      </Link>
+      <BackLink fallbackHref={`/profiles/${learnerId}${course ? `?environment=${course.id}` : ""}`} />
       <div className="mt-4">
         <PageHeader
           title={`Edit insights — ${learner.display_name}`}

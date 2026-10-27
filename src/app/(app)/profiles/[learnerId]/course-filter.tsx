@@ -23,7 +23,8 @@ export function CourseFilter({
         value={selected ?? "all"}
         onChange={(e) => {
           const value = e.target.value;
-          router.push(value === "all" ? pathname : `${pathname}?environment=${value}`);
+          // replace, not push: switching course shouldn't become a "Back" step.
+          router.replace(value === "all" ? pathname : `${pathname}?environment=${value}`);
         }}
         className="appearance-none rounded-lg border border-border bg-surface py-2 pl-3 pr-8 text-sm font-medium text-foreground"
       >

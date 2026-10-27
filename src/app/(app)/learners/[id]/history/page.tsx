@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader, EmptyState, Card } from "@/components/ui";
 import { EvidenceHistoryList } from "@/components/evidence-history-list";
-import { ArrowLeftIcon, ListIcon } from "@/components/icons";
+import { ListIcon } from "@/components/icons";
 
 export default async function LearnerEvidenceHistoryPage({
   params,
@@ -48,13 +49,7 @@ export default async function LearnerEvidenceHistoryPage({
 
   return (
     <div>
-      <Link
-        href={`/learners/${id}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back to {learner.display_name}
-      </Link>
+      <BackLink fallbackHref={`/learners/${id}`} />
 
       <div className="mt-4">
         <PageHeader

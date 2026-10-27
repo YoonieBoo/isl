@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AccentCard, Badge, Card, PageHeader } from "@/components/ui";
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, PencilIcon } from "@/components/icons";
+import { ArrowRightIcon, CalendarIcon, PencilIcon } from "@/components/icons";
 import { AnalysisStatus } from "@/app/(app)/profiles/[learnerId]/analysis-status";
 import { SkillLevelBadge } from "@/components/skill-level";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
@@ -273,13 +274,12 @@ export default async function LearnerProfilePage({
 
   return (
     <div>
-      <Link
-        href={`/learners/${learner.id}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Manage learner record
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <BackLink fallbackHref="/" />
+        <Link href={`/learners/${learner.id}`} className="text-sm font-medium text-foreground-muted hover:text-isl-blue hover:underline">
+          Manage learner record
+        </Link>
+      </div>
 
       <div className="mt-4">
         <PageHeader

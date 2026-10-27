@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
-import { ArrowLeftIcon } from "@/components/icons";
 import { LEVEL_STYLES, SkillLevelBadge, SkillLevelLegend } from "@/components/skill-level";
 import { courseCode } from "@/lib/course-code";
 import {
@@ -55,13 +55,7 @@ export default async function ClassSkillsPage({ params }: PageProps<"/learning-e
     ratingsByLearner.get(learnerId)?.skills.find((s) => s.key === skillKey)?.level ?? "not_enough_evidence";
 
   const back = (
-    <Link
-      href={`/learning-environments/${env.id}`}
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-isl-blue hover:underline"
-    >
-      <ArrowLeftIcon className="h-4 w-4" />
-      Back to {code}
-    </Link>
+    <BackLink fallbackHref="/" />
   );
 
   if (!framework) {
