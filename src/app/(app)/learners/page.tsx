@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeStudentId } from "@/lib/student-id";
+import { getSkillFramework } from "@/lib/skills/frameworks";
 import { Card, EmptyState, PageHeader, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui";
 import { BuildingIcon, SearchIcon, UserIcon } from "@/components/icons";
 
@@ -22,13 +23,14 @@ export default async function LearnersPage({
   const supabase = await createClient();
 
   let environmentName: string | null = null;
+  let hasClassSkills = false;
   let learnerIds: string[] | null = null;
 
   if (environmentId) {
     const [{ data: env }, { data: links }] = await Promise.all([
       supabase
         .from("learning_environments")
-        .select("name")
+        .select("name, skill_framework")
         .eq("id", environmentId)
         .single(),
       supabase
@@ -37,6 +39,7 @@ export default async function LearnersPage({
         .eq("environment_id", environmentId),
     ]);
     environmentName = env?.name ?? null;
+    hasClassSkills = Boolean(env && getSkillFramework(env));
     learnerIds = (links ?? []).map((l) => l.learner_id);
   }
 
@@ -104,9 +107,16 @@ export default async function LearnersPage({
               : "All learners across every learning environment."
         }
         action={
-          <Link href={newHref}>
-            <PrimaryButton>New learner</PrimaryButton>
-          </Link>
+          <div className="flex items-center gap-2">
+            {environmentId && hasClassSkills && (
+              <Link href={`/learning-environments/${environmentId}/cohort`}>
+                <SecondaryButton>Class skills</SecondaryButton>
+              </Link>
+            )}
+            <Link href={newHref}>
+              <PrimaryButton>New learner</PrimaryButton>
+            </Link>
+          </div>
         }
       />
 

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, PrimaryButton } from "@/components/ui";
+import { PrimaryButton } from "@/components/ui";
 import { ArrowRightIcon, BuildingIcon, SearchIcon } from "@/components/icons";
 import { courseCode } from "@/lib/course-code";
-import { getSkillFramework } from "@/lib/skills/frameworks";
 
 // Start page for instructors: find a student, or open a class. System
 // counts (datasets, processing runs, review queue) live on their own pages.
@@ -15,7 +14,7 @@ export default async function DashboardPage() {
 
   const [{ data: profile }, { data: environments }, { data: links }] = await Promise.all([
     supabase.from("profiles").select("display_name").eq("id", user?.id ?? "").maybeSingle(),
-    supabase.from("learning_environments").select("id, name, skill_framework").eq("status", "active").order("name"),
+    supabase.from("learning_environments").select("id, name").eq("status", "active").order("name"),
     supabase.from("learner_environments").select("environment_id"),
   ]);
 
@@ -45,33 +44,20 @@ export default async function DashboardPage() {
       <h2 className="mt-8 text-base font-semibold text-foreground">Courses</h2>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {(environments ?? []).map((env) => (
-          <Card key={env.id} className="flex flex-col">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-isl-blue-pale text-isl-blue">
-                <BuildingIcon className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="font-semibold text-foreground">{courseCode(env.name)}</p>
-                <p className="text-sm text-foreground-muted">{countByEnvironment.get(env.id) ?? 0} students</p>
-              </div>
+          <Link
+            key={env.id}
+            href={`/learners?environment=${env.id}`}
+            className="flex items-center gap-3 rounded-xl border border-border bg-surface p-5 transition-colors hover:border-isl-blue hover:bg-isl-blue-pale/40"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-isl-blue-pale text-isl-blue">
+              <BuildingIcon className="h-5 w-5" />
+            </span>
+            <div className="flex-1">
+              <p className="font-semibold text-foreground">{courseCode(env.name)}</p>
+              <p className="text-sm text-foreground-muted">{countByEnvironment.get(env.id) ?? 0} students</p>
             </div>
-            <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 text-sm">
-              {getSkillFramework(env) && (
-                <Link
-                  href={`/learning-environments/${env.id}/cohort`}
-                  className="inline-flex items-center justify-between font-medium text-isl-blue hover:underline"
-                >
-                  View class skills <ArrowRightIcon className="h-4 w-4" />
-                </Link>
-              )}
-              <Link
-                href={`/learners?environment=${env.id}`}
-                className="inline-flex items-center justify-between font-medium text-isl-blue hover:underline"
-              >
-                View students <ArrowRightIcon className="h-4 w-4" />
-              </Link>
-            </div>
-          </Card>
+            <ArrowRightIcon className="h-4 w-4 text-foreground-muted" />
+          </Link>
         ))}
       </div>
     </div>
