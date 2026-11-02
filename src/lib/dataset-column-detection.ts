@@ -13,7 +13,9 @@ const ID_COLUMN_CANDIDATES = [
   "learner_id",
   "id",
 ];
-const EMAIL_COLUMN_CANDIDATES = ["email address", "email", "e-mail"];
+// Google Forms exports the collected account email as "Username" when the form
+// only accepts signed-in university accounts (verified emails).
+const EMAIL_COLUMN_CANDIDATES = ["email address", "email", "e-mail", "username"];
 const NAME_COLUMN_CANDIDATES = ["full name", "display name", "student name", "learner name", "name"];
 
 // Google Forms (the source of most real course exports we've seen) numbers

@@ -1,5 +1,5 @@
 // Form columns that identify the learner or are bookkeeping, not answers.
-export const NON_ANSWER_FIELD = /timestamp|e-?mail|\b(nick)?name\b|student\s*(id|code)|^id$|\bscore\b|\bsection\b|^\+/i;
+export const NON_ANSWER_FIELD = /timestamp|e-?mail|username|\b(nick)?name\b|student\s*(id|code)|^id$|\bscore\b|\bsection\b|^\+/i;
 
 export function isUsableAnswer(text: string): boolean {
   const t = text.trim();
