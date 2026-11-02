@@ -10,12 +10,25 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 // noticed in the learner's answers (preferences, concerns). Written once when
 // the learner is analyzed and stored, rather than regenerated on every view.
 
+// Instructors scan these, so the overview is three short labelled lines, not
+// a paragraph. The page and PDF render each "Label: text" line separately.
+const FORMAT = `Output EXACTLY these lines, nothing else:
+Doing well: <what the learner does well, max 15 words>
+Work on: <the 1-2 most important next steps, max 15 words>
+Worth noting: <one concrete interest, concern or preference the learner stated, max 12 words>
+
+"Doing well" names the learner's actual topic or example (e.g. "Clear on why long OPD waits hurt elderly patients"), not a generic phrase.
+"Worth noting" must add something NOT already in the other two lines (e.g. a stated preference, worry or goal). Leave the line out completely if it would repeat them or nothing concrete supports it.`;
+
 const RULES = `Rules:
-- Write for the learner's instructor, in plain, warm, professional language.
+- Write like a busy teacher's quick note: plain, everyday words, short phrases. Fragments are fine.
+- No filler or praise words: never "demonstrates", "commendable", "showcasing", "journey", "moving forward", "overall", "valuable asset", "room for growth", "solid understanding".
+- Don't name the learner or start with their name; the page already shows it. Never use he/she/his/her.
+- Be specific to what the learner actually wrote (their topic, their example). No generic statements that could fit anyone.
 - Use ONLY the information given. Do not invent skills, events, or context.
-- Some observations may actually describe OTHER people the learner wrote about (survey respondents, customers, classmates, families) rather than the learner. Leave those out.
-- Never use gendered pronouns (he/she/his/her). Use the learner's first name or "they".
-- No bullet points, headers or markdown. One paragraph.`;
+- Some observations may describe OTHER people the learner wrote about (survey respondents, customers, classmates, families). Leave those out.
+- If almost nothing is known yet, say so plainly, e.g. "Work on: Too early to tell; only first-week answers so far."
+- No markdown, no bullet symbols.`;
 
 async function complete(prompt: string): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -34,7 +47,12 @@ async function complete(prompt: string): Promise<string | null> {
       if (!response.ok) return null;
       const json = await response.json();
       const text = json.choices?.[0]?.message?.content;
-      return typeof text === "string" && text.trim() ? text.trim() : null;
+      if (typeof text !== "string" || !text.trim()) return null;
+      return text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join("\n");
     } catch {
       await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
     }
@@ -52,6 +70,29 @@ function skillLines(courseName: string, ratings: SkillRatings, stored?: SkillFra
     .join("\n");
 }
 
+const STOP = new Set("a an the and or of in on to for with about as at by is are be their its it this that from into more".split(" "));
+const words = (t: string) => new Set(t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)));
+
+// The model often fills "Worth noting" with a rewording of "Doing well" or
+// with "nothing shared yet". Drop the line in both cases so the overview
+// never says the same thing twice or pads itself out.
+function tidyOverview(text: string | null): string | null {
+  if (!text) return text;
+  const lines = text.split("\n");
+  const doingWell = lines.find((l) => /^doing well\s*:/i.test(l)) ?? "";
+  return lines
+    .filter((line) => {
+      const m = line.match(/^worth noting\s*:\s*(.*)$/i);
+      if (!m) return true;
+      const note = m[1];
+      if (/^(no|none|nothing|not\b|n\/a)/i.test(note)) return false;
+      const nw = words(note), dw = words(doingWell);
+      const shared = [...nw].filter((w) => dw.has(w)).length;
+      return nw.size > 0 && shared / nw.size < 0.4;
+    })
+    .join("\n");
+}
+
 export async function writeCourseOverview(params: {
   learnerName: string;
   courseName: string;
@@ -61,7 +102,9 @@ export async function writeCourseOverview(params: {
   concerns: string[];
 }): Promise<string | null> {
   const list = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).join("\n") : "- none recorded");
-  return complete(`Write an overview of ${params.learnerName} in course ${courseCode(params.courseName)}: 4-5 sentences covering (1) the overall picture, (2) their clearest strengths, (3) what to work on next, and (4) anything notable about how they like to learn or what concerns them, if the observations below support it.
+  return tidyOverview(await complete(`Write a quick overview of a learner in course ${courseCode(params.courseName)} for their instructor.
+
+${FORMAT}
 
 ${RULES}
 
@@ -72,15 +115,17 @@ OTHER OBSERVATIONS — learning preferences ("label: quote"):
 ${list(params.preferences)}
 
 OTHER OBSERVATIONS — concerns ("label: quote"):
-${list(params.concerns)}`);
+${list(params.concerns)}`));
 }
 
-async function writeCombinedOverview(learnerName: string, courses: { code: string; overview: string }[]): Promise<string | null> {
-  return complete(`Write an overview of ${learnerName} across all their courses: 4-5 sentences covering the overall picture, strengths that show up, what to work on, and how they differ between courses. Base it only on these per-course overviews:
+async function writeCombinedOverview(courses: { code: string; overview: string }[]): Promise<string | null> {
+  return tidyOverview(await complete(`Write a quick overview of a learner across all their courses, for an instructor. In "Doing well" and "Work on", mention the course code when a point applies to one course only. Base it only on these per-course overviews:
 
-${courses.map((c) => `${c.code}: ${c.overview}`).join("\n\n")}
+${courses.map((c) => `${c.code}:\n${c.overview}`).join("\n\n")}
 
-${RULES}`);
+${FORMAT}
+
+${RULES}`));
 }
 
 export function readCourseOverview(approvedOutput: unknown): string | null {
@@ -114,7 +159,7 @@ export async function refreshLearnerSummary(supabase: Supabase, learnerId: strin
   if (courses.length === 0) return;
 
   const summary =
-    courses.length === 1 ? courses[0].overview : await writeCombinedOverview(learner.display_name, courses);
+    courses.length === 1 ? courses[0].overview : await writeCombinedOverview(courses);
   if (!summary) return;
 
   await supabase.from("learner_profiles").upsert({ learner_id: learnerId, summary }, { onConflict: "learner_id" });

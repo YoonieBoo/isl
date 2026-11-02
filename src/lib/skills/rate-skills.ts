@@ -153,7 +153,7 @@ RULES:
 - Never use gendered pronouns (he/she/his/her). Refer to the learner by first name or as "they".
 - For each skill give a 1-2 sentence "summary" explaining the level, in plain language, referring to what the learner wrote.
 - For each skill except not_enough_evidence, give 1-${MAX_QUOTES_PER_SKILL} pieces of "evidence": the answer id and an EXACT quote copied word for word from that answer (8-35 words, enough to show the reasoning — not just a short label or a multiple-choice option). Never paraphrase inside a quote.
-- Also write an "overview": 2-3 plain sentences on this learner's overall skill profile in this course — what they do well and what to work on. It must agree with the levels you gave: only call out as "to work on" skills rated developing or needs_support.
+- Also write an "overview" for the instructor as two short lines, exactly "Doing well: <max 15 words>\nWork on: <max 15 words>". Plain words, no praise or filler, don't name the learner. It must agree with the levels you gave: only call out as "Work on" skills rated developing or needs_support.
 
 Return ONLY JSON in this shape:
 {"overview": "...", "skills": [{"key": "...", "level": "...", "summary": "...", "evidence": [{"answerId": "A1", "quote": "..."}]}]}

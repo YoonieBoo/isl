@@ -1,15 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { courseCode } from "@/lib/course-code";
 import { LightBulbIcon } from "@/components/icons";
-
-const STATUS_TONE = {
-  candidate: "blue",
-  under_review: "warning",
-  revised: "warning",
-  approved: "success",
-  rejected: "danger",
-} as const;
 
 export default async function InsightsPage({
   searchParams,
@@ -21,8 +14,8 @@ export default async function InsightsPage({
   const supabase = await createClient();
   let query = supabase
     .from("learner_insights")
-    .select("id, title, status, created_at, learners(display_name), learning_environments(name)")
-    .order("created_at", { ascending: false });
+    .select("learner_id, environment_id, learners(display_name, external_reference), learning_environments(name)")
+    .eq("status", "approved");
 
   if (learnerId) query = query.eq("learner_id", learnerId);
   if (environmentId) query = query.eq("environment_id", environmentId);
@@ -33,6 +26,26 @@ export default async function InsightsPage({
       ? supabase.from("learning_environments").select("name").eq("id", environmentId).single()
       : Promise.resolve({ data: null }),
   ]);
+
+  // One row per student per course (a student can have older hand-approved
+  // insights too); the name opens that student's insights for the course.
+  const seen = new Set<string>();
+  const students = (insights ?? [])
+    .filter((i) => {
+      const key = `${i.learner_id}|${i.environment_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((i) => ({
+      key: `${i.learner_id}|${i.environment_id}`,
+      href: `/profiles/${i.learner_id}?environment=${i.environment_id}`,
+      name: i.learners?.display_name ?? "Unknown student",
+      id: i.learners?.external_reference ?? null,
+      course: i.learning_environments?.name ? courseCode(i.learning_environments.name) : null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const showCourse = !environmentId && new Set(students.map((s) => s.course)).size > 1;
 
   const exportParams = new URLSearchParams();
   if (learnerId) exportParams.set("learner", learnerId);
@@ -45,7 +58,7 @@ export default async function InsightsPage({
         title="Insights"
         icon={LightBulbIcon}
         iconClassName="bg-amber-50 text-amber-600"
-        description={environmentRow?.name ? `Insights in ${environmentRow.name}.` : undefined}
+        description={environmentRow?.name ? `Students in ${courseCode(environmentRow.name)}. Click a name to see their insights.` : "Click a name to see their insights."}
         action={
           <a
             href={`/api/export/insights${exportQuery ? `?${exportQuery}` : ""}`}
@@ -59,49 +72,30 @@ export default async function InsightsPage({
       <div className="mt-6">
         {error && <p className="text-sm text-danger">{error.message}</p>}
 
-        {!error && insights && insights.length === 0 && (
-          <EmptyState
-            title="No insights yet"
-            description="Create an insight from a reviewed processing result to get started."
-          />
+        {!error && students.length === 0 && (
+          <EmptyState title="No insights yet" description="Upload a form file on the course page and click Update all students." />
         )}
 
-        {insights && insights.length > 0 && (
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-foreground-muted">
-                  <th className="px-5 py-3">Title</th>
-                  <th className="px-5 py-3">Learner</th>
-                  <th className="px-5 py-3">Environment</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {insights.map((insight) => (
-                  <tr key={insight.id} className="border-b border-border last:border-0">
-                    <td className="px-5 py-3">
-                      <Link href={`/insights/${insight.id}`} className="font-medium text-isl-blue hover:underline">
-                        {insight.title}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3 text-foreground-muted">
-                      {insight.learners?.display_name ?? "—"}
-                    </td>
-                    <td className="px-5 py-3 text-foreground-muted">
-                      {insight.learning_environments?.name ?? "—"}
-                    </td>
-                    <td className="px-5 py-3">
-                      <Badge tone={STATUS_TONE[insight.status]}>{insight.status.replace(/_/g, " ")}</Badge>
-                    </td>
-                    <td className="px-5 py-3 text-foreground-muted">
-                      {new Date(insight.created_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {students.length > 0 && (
+          <Card className="p-0">
+            <p className="border-b border-border px-5 py-3 text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              {students.length} student{students.length === 1 ? "" : "s"}
+            </p>
+            <ul className="divide-y divide-border">
+              {students.map((s) => (
+                <li key={s.key}>
+                  <Link href={s.href} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-surface-pale">
+                    <span>
+                      <span className="font-medium text-isl-blue">{s.name}</span>
+                      {s.id && <span className="ml-2 text-foreground-muted">{s.id}</span>}
+                    </span>
+                    {showCourse && s.course && (
+                      <span className="rounded-full bg-surface-pale px-2 py-0.5 text-xs font-medium text-foreground-muted">{s.course}</span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </div>

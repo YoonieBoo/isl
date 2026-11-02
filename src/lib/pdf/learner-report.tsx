@@ -1,4 +1,5 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { parseOverview } from "@/components/overview-text";
 
 // The built-in Helvetica font has no arrow glyphs, which learners often type
 // in step-by-step workflow answers ("Step 1 → Step 2").
@@ -78,7 +79,12 @@ export function LearnerReportDocument({ data }: { data: LearnerReportData }) {
         {data.overview && (
           <>
             <Text style={styles.cardTitle}>Overview</Text>
-            <Text style={styles.overviewText}>{data.overview}</Text>
+            {parseOverview(data.overview)?.map((line) => (
+              <Text key={line.label} style={[styles.overviewText, { marginBottom: 3 }]}>
+                <Text style={{ fontFamily: "Helvetica-Bold" }}>{line.label}: </Text>
+                {pdfSafe(line.text)}
+              </Text>
+            )) ?? <Text style={styles.overviewText}>{data.overview}</Text>}
           </>
         )}
 

@@ -6,6 +6,7 @@ import { AccentCard, Badge, Card, PageHeader } from "@/components/ui";
 import { ArrowRightIcon, CalendarIcon, PencilIcon } from "@/components/icons";
 import { AnalysisStatus } from "@/app/(app)/profiles/[learnerId]/analysis-status";
 import { SkillLevelBadge } from "@/components/skill-level";
+import { OverviewText } from "@/components/overview-text";
 import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
 import { readCourseOverview } from "@/lib/skills/overview";
 import { DownloadPdfButton } from "@/app/(app)/profiles/[learnerId]/download-pdf-button";
@@ -314,7 +315,7 @@ export default async function LearnerProfilePage({
         <div className="mt-4 border-t border-border pt-4">
           {overview ? (
             <>
-              <p className="text-sm leading-relaxed text-foreground">{overview.text}</p>
+              <OverviewText text={overview.text} />
               <p className="mt-3 flex items-center gap-1.5 text-xs text-foreground-muted">
                 <CalendarIcon className="h-3.5 w-3.5" />
                 Updated {new Date(overview.updatedAt).toLocaleDateString()}
