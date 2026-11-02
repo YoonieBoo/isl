@@ -36,6 +36,14 @@ export async function processRunRecords(
 
   const adapter = getProcessingAdapter(run.ai_source, run.model_or_tool);
 
+  // Use the course's saved question list where this form has those
+  // questions; a form with different questions (e.g. a later week's
+  // reflection) — or a course with no saved list — has every answer column read.
+  const fieldsFor = (sourceData: Record<string, unknown>) => {
+    const present = evidenceFields.filter((f) => f in sourceData);
+    return present.length > 0 ? present : autoEvidenceFields(sourceData);
+  };
+
   // A learner-scoped on-demand run (run.learner_id set, run.dataset_id
   // null) pulls that learner's records from every dataset in this
   // environment rather than one pre-selected dataset.
@@ -105,8 +113,7 @@ export async function processRunRecords(
 
     const output = await adapter.processRecord({
       sourceData: record.source_data as Record<string, string>,
-      // No question list set up for this course -> read every answer column.
-      evidenceFields: evidenceFields.length > 0 ? evidenceFields : autoEvidenceFields(record.source_data as Record<string, unknown>),
+      evidenceFields: fieldsFor(record.source_data as Record<string, unknown>),
       context,
     });
 
