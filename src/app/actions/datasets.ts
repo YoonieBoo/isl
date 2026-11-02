@@ -36,7 +36,7 @@ async function uploadOneDataset(
   if (parsed.rows.length === 0) throw new Error("No data rows found in the file.");
 
   const name = stripExtension(file.name);
-  const { idColumn, nameColumn } = suggestColumns(parsed.columns);
+  const { idColumn, nameColumn } = suggestColumns(parsed.columns, parsed.rows);
 
   const { data: dataset, error: datasetError } = await supabase
     .from("datasets")
