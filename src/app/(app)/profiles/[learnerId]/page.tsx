@@ -11,7 +11,15 @@ import { CourseFilter } from "@/app/(app)/profiles/[learnerId]/course-filter";
 import { readCourseOverview } from "@/lib/skills/overview";
 import { DownloadPdfButton } from "@/app/(app)/profiles/[learnerId]/download-pdf-button";
 import { courseCode, shortFormName } from "@/lib/course-code";
-import { getSkillFramework, readInsightEdits, readSkillRatings, type SkillLevel, type SkillRatings } from "@/lib/skills/frameworks";
+import {
+  getSkillFramework,
+  readInsightEdits,
+  readSkillRatings,
+  type SkillFramework,
+  type SkillLevel,
+  type SkillRatings,
+} from "@/lib/skills/frameworks";
+import { readWorkshopRatings, workshopFramework, workshopLabel } from "@/lib/workshops";
 
 type Bullet = {
   label: string;
@@ -98,19 +106,14 @@ function BulletList({ items }: { items: Bullet[] }) {
   );
 }
 
-// Strengths and development focus come from the course's fixed skill ratings
-// (see lib/skills) — every learner in a course is judged on the same skills.
-function skillBullets(
-  courses: { id: string; name: string; skill_framework?: unknown }[],
-  ratingsByEnvironment: Map<string, SkillRatings>,
-  levels: SkillLevel[],
-  showCourse: boolean,
-): Bullet[] {
+type RatedSet = { framework: SkillFramework | null; ratings: SkillRatings | undefined; tag: string | null };
+
+// Strengths and development focus come from fixed skill ratings (see
+// lib/skills) — every learner in a course (or week) is judged on the same skills.
+function skillBullets(sets: RatedSet[], levels: SkillLevel[]): Bullet[] {
   const bullets: Bullet[] = [];
   for (const level of levels) {
-    for (const course of courses) {
-      const framework = getSkillFramework(course);
-      const ratings = ratingsByEnvironment.get(course.id);
+    for (const { framework, ratings, tag } of sets) {
       if (!framework || !ratings) continue;
       for (const skill of framework.skills) {
         const rating = ratings.skills.find((s) => s.key === skill.key);
@@ -118,7 +121,7 @@ function skillBullets(
         bullets.push({
           label: skill.name,
           href: null,
-          courses: showCourse ? [courseCode(course.name)] : [],
+          courses: tag ? [tag] : [],
           level: levels.length > 1 ? level : undefined,
           detail: {
             summary: rating.summary,
@@ -143,9 +146,34 @@ export default async function LearnerProfilePage({
   searchParams,
 }: PageProps<"/profiles/[learnerId]">) {
   const { learnerId } = await params;
-  const { environment: environmentFilter, updating, saved } = await searchParams;
+  const { environment: environmentFilter, workshop: workshopFilter, updating, saved } = await searchParams;
   const selectedEnvironmentId = typeof environmentFilter === "string" ? environmentFilter : null;
   const supabase = await createClient();
+
+  // Weeks of the picked course this learner has weekly insights for, and the
+  // week picked with ?workshop=<id>, which switches the page to that week.
+  const { data: weekRows } = selectedEnvironmentId
+    ? await supabase
+        .from("workshop_insights")
+        .select("overview, skill_ratings, updated_at, workshops!inner(id, environment_id, week_number, title, skill_framework)")
+        .eq("learner_id", learnerId)
+        .eq("workshops.environment_id", selectedEnvironmentId)
+    : { data: [] };
+  const weeks = (weekRows ?? []).sort((a, b) => a.workshops.week_number - b.workshops.week_number);
+  const selectedWeek = weeks.find((w) => w.workshops.id === workshopFilter) ?? null;
+  // A week picked that has no insight for this learner yet still shows as that week.
+  const emptyWeek =
+    typeof workshopFilter === "string" && !selectedWeek && selectedEnvironmentId
+      ? (
+          await supabase
+            .from("workshops")
+            .select("week_number, title")
+            .eq("id", workshopFilter)
+            .eq("environment_id", selectedEnvironmentId)
+            .maybeSingle()
+        ).data
+      : null;
+  const weekMode = Boolean(selectedWeek || emptyWeek);
 
   const [
     { data: learner, error },
@@ -203,7 +231,11 @@ export default async function LearnerProfilePage({
   const latestCourseInsight = selectedEnvironmentId
     ? [...approvedInsights].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).find((i) => readCourseOverview(i.approved_output))
     : undefined;
-  const overview = latestCourseInsight
+  const overview = weekMode
+    ? selectedWeek?.overview
+      ? { text: selectedWeek.overview, updatedAt: selectedWeek.updated_at, editedBy: undefined }
+      : null
+    : latestCourseInsight
     ? {
         text: readCourseOverview(latestCourseInsight.approved_output)!,
         updatedAt: latestCourseInsight.updated_at,
@@ -214,8 +246,23 @@ export default async function LearnerProfilePage({
       : null;
 
   const showCourse = !selectedEnvironmentId && courses.length > 1;
-  const strengths = skillBullets(courses, ratingsByEnvironment, ["strong"], showCourse);
-  const needs = skillBullets(courses, ratingsByEnvironment, ["needs_support", "developing"], showCourse);
+  const ratedSets: RatedSet[] = weekMode
+    ? selectedWeek && courses[0]
+      ? [
+          {
+            framework: workshopFramework(selectedWeek.workshops, courses[0].name),
+            ratings: readWorkshopRatings(selectedWeek.skill_ratings) ?? undefined,
+            tag: null,
+          },
+        ]
+      : []
+    : courses.map((c) => ({
+        framework: getSkillFramework(c),
+        ratings: ratingsByEnvironment.get(c.id),
+        tag: showCourse ? courseCode(c.name) : null,
+      }));
+  const strengths = skillBullets(ratedSets, ["strong"]);
+  const needs = skillBullets(ratedSets, ["needs_support", "developing"]);
 
   // Learning preferences aren't part of the skill lists, so they still come
   // from the AI's per-answer signals, stored on the insight as "label: quote".
@@ -288,16 +335,20 @@ export default async function LearnerProfilePage({
           action={
             <div className="flex items-center gap-2">
               <CourseFilter environments={allCourses} selected={selectedEnvironmentId} />
-              <Link
-                href={`/profiles/${learner.id}/edit${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-surface-pale hover:text-foreground"
-              >
-                <PencilIcon className="h-4 w-4" />
-                Edit insights
-              </Link>
-              <DownloadPdfButton
-                href={`/api/learners/${learner.id}/report${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
-              />
+              {!weekMode && (
+                <>
+                  <Link
+                    href={`/profiles/${learner.id}/edit${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-surface-pale hover:text-foreground"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                    Edit insights
+                  </Link>
+                  <DownloadPdfButton
+                    href={`/api/learners/${learner.id}/report${selectedEnvironmentId ? `?environment=${selectedEnvironmentId}` : ""}`}
+                  />
+                </>
+              )}
             </div>
           }
         />
@@ -310,8 +361,36 @@ export default async function LearnerProfilePage({
         </div>
       )}
 
+      {selectedEnvironmentId && (weeks.length > 0 || weekMode) && (
+        <nav aria-label="Week" className="mt-6 flex flex-wrap gap-2">
+          {[
+            { id: null as string | null, label: "Whole course" },
+            ...weeks.map((w) => ({ id: w.workshops.id as string | null, label: `Week ${w.workshops.week_number}` })),
+          ].map((tab) => {
+            const active = tab.id ? tab.id === workshopFilter : !weekMode;
+            return (
+              <Link
+                key={tab.id ?? "course"}
+                href={`/profiles/${learner.id}?environment=${selectedEnvironmentId}${tab.id ? `&workshop=${tab.id}` : ""}`}
+                replace
+                className={`rounded-full px-3 py-1 text-sm font-medium ${
+                  active ? "bg-isl-blue text-white" : "bg-surface-pale text-foreground-muted hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+
       <Card className="mt-6">
-        <h2 className="text-base font-semibold text-foreground">Overview</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          Overview
+          {(selectedWeek || emptyWeek) && (
+            <span className="font-normal text-foreground-muted"> · {workshopLabel(selectedWeek?.workshops ?? emptyWeek!)}</span>
+          )}
+        </h2>
         <div className="mt-4 border-t border-border pt-4">
           {overview ? (
             <>
@@ -324,7 +403,9 @@ export default async function LearnerProfilePage({
             </>
           ) : (
             <p className="text-sm text-foreground-muted">
-              {courses.length > 0 && courses.every((c) => !getSkillFramework(c))
+              {weekMode
+                ? "No insights for this week yet. Open the week on the course page and click “Update this week”."
+                : courses.length > 0 && courses.every((c) => !getSkillFramework(c))
                 ? "This course has no skills set up yet, so there is nothing to rate. Add them on the course page, then click “Update all students”."
                 : "No overview yet. Open the learner record and click Analyze for a course."}
             </p>
@@ -339,60 +420,66 @@ export default async function LearnerProfilePage({
         <AccentCard accent="orange" title="Development focus">
           <BulletList items={needs} />
         </AccentCard>
-        <AccentCard accent="purple" title="Learning preferences">
-          <BulletList items={preferences} />
-        </AccentCard>
-        <AccentCard accent="green" title="Learning environments">
-          {courses.length > 0 ? (
-            <ul className="space-y-1.5 text-sm">
-              {courses.map((c) => (
-                <li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
-                  <Link href={`/learning-environments/${c.id}`} className="text-isl-blue hover:underline">
-                    {c.name}
-                  </Link>
-                  {getSkillFramework(c) && (
-                    <Link
-                      href={`/learning-environments/${c.id}/cohort`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-foreground-muted hover:text-isl-blue hover:underline"
-                    >
-                      Compare with class <ArrowRightIcon className="h-3.5 w-3.5" />
-                    </Link>
+        {!weekMode && (
+          <>
+            <AccentCard accent="purple" title="Learning preferences">
+              <BulletList items={preferences} />
+            </AccentCard>
+            <AccentCard accent="green" title="Learning environments">
+              {courses.length > 0 ? (
+                <ul className="space-y-1.5 text-sm">
+                  {courses.map((c) => (
+                    <li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <Link href={`/learning-environments/${c.id}`} className="text-isl-blue hover:underline">
+                        {c.name}
+                      </Link>
+                      {getSkillFramework(c) && (
+                        <Link
+                          href={`/learning-environments/${c.id}/cohort`}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-foreground-muted hover:text-isl-blue hover:underline"
+                        >
+                          Compare with class <ArrowRightIcon className="h-3.5 w-3.5" />
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-foreground-muted">Not enrolled anywhere yet.</p>
+              )}
+            </AccentCard>
+          </>
+        )}
+      </div>
+
+      {!weekMode && (
+        <Card className="mt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-foreground">Portfolio</h2>
+            <Link href={`/portfolios?learner=${learner.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-isl-blue hover:underline">
+              View all <ArrowRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+          {artifactsWithLinks.length > 0 ? (
+            <ul className="mt-3 space-y-1.5 text-sm">
+              {artifactsWithLinks.map((a) => (
+                <li key={a.id} className="flex items-center justify-between">
+                  {a.viewUrl ? (
+                    <a href={a.viewUrl} target="_blank" rel="noreferrer" className="font-medium text-isl-blue hover:underline">
+                      {a.title}
+                    </a>
+                  ) : (
+                    <span className="text-foreground">{a.title}</span>
                   )}
+                  <Badge>{a.artifact_type.replace(/_/g, " ")}</Badge>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-foreground-muted">Not enrolled anywhere yet.</p>
+            <p className="mt-2 text-sm text-foreground-muted">No portfolio artifacts yet.</p>
           )}
-        </AccentCard>
-      </div>
-
-      <Card className="mt-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Portfolio</h2>
-          <Link href={`/portfolios?learner=${learner.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-isl-blue hover:underline">
-            View all <ArrowRightIcon className="h-4 w-4" />
-          </Link>
-        </div>
-        {artifactsWithLinks.length > 0 ? (
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {artifactsWithLinks.map((a) => (
-              <li key={a.id} className="flex items-center justify-between">
-                {a.viewUrl ? (
-                  <a href={a.viewUrl} target="_blank" rel="noreferrer" className="font-medium text-isl-blue hover:underline">
-                    {a.title}
-                  </a>
-                ) : (
-                  <span className="text-foreground">{a.title}</span>
-                )}
-                <Badge>{a.artifact_type.replace(/_/g, " ")}</Badge>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-foreground-muted">No portfolio artifacts yet.</p>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }

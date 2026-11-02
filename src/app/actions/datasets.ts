@@ -32,6 +32,7 @@ async function uploadOneDataset(
   userId: string,
   environmentId: string,
   file: File,
+  workshopId: string | null,
 ) {
   const parsed = await parseDatasetFile(file);
   if (parsed.rows.length === 0) throw new Error("No data rows found in the file.");
@@ -43,6 +44,7 @@ async function uploadOneDataset(
     .from("datasets")
     .insert({
       environment_id: environmentId,
+      workshop_id: workshopId,
       name,
       original_file_name: file.name,
       storage_reference: "",
@@ -118,6 +120,17 @@ export async function uploadDatasets(
 
   const environmentId = String(formData.get("environmentId") ?? "").trim();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  // Only a week of the chosen course counts.
+  let workshopId: string | null = String(formData.get("workshopId") ?? "").trim() || null;
+  if (workshopId) {
+    const { data: week } = await supabase
+      .from("workshops")
+      .select("id")
+      .eq("id", workshopId)
+      .eq("environment_id", environmentId)
+      .maybeSingle();
+    if (!week) workshopId = null;
+  }
 
   if (!environmentId || files.length === 0) {
     return { error: "Environment and at least one CSV/XLSX file are required." };
@@ -128,7 +141,7 @@ export async function uploadDatasets(
 
   for (const file of files) {
     try {
-      await uploadOneDataset(supabase, user.id, environmentId, file);
+      await uploadOneDataset(supabase, user.id, environmentId, file, workshopId);
       successCount += 1;
     } catch (e) {
       errors.push(`${file.name}: ${e instanceof Error ? e.message : "Upload failed."}`);

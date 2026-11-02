@@ -3,14 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
-import { skillKey } from "@/lib/skills/frameworks";
+import { parseSkillsForm } from "@/lib/skills/parse-skills-form";
 import { resolveCourseRunSettings } from "@/lib/processing/course-settings";
 import { processRunRecords } from "@/lib/processing/run-records";
 import { autoUpdateEnvironmentInsight } from "@/lib/insight-evidence";
+import { updateWorkshopInsight } from "@/lib/workshops";
 
 export type SkillsFormState = { error?: string; saved?: boolean } | undefined;
-
-const MAX_SKILLS = 10;
 
 // Saves the course's fixed skill list (typed in on the course page). Keys of
 // skills that already existed are kept so existing ratings still match.
@@ -25,24 +24,9 @@ export async function saveCourseSkills(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Please sign in again." };
 
-  const names = formData.getAll("skill_name").map((v) => String(v).trim());
-  const descriptions = formData.getAll("skill_description").map((v) => String(v).trim());
-  const keys = formData.getAll("skill_key").map((v) => String(v).trim());
-
-  const skills: { key: string; name: string; description: string }[] = [];
-  const usedKeys = new Set<string>();
-  names.forEach((name, i) => {
-    if (!name) return;
-    let key = keys[i] || skillKey(name);
-    while (usedKeys.has(key)) key = `${key}_2`;
-    usedKeys.add(key);
-    skills.push({ key, name, description: descriptions[i] ?? "" });
-  });
-
-  if (skills.length === 0) return { error: "Add at least one skill." };
-  if (skills.length > MAX_SKILLS) return { error: `Keep it to ${MAX_SKILLS} skills or fewer.` };
-  const lower = skills.map((s) => s.name.toLowerCase());
-  if (new Set(lower).size !== lower.length) return { error: "Two skills have the same name." };
+  const parsed = parseSkillsForm(formData);
+  if ("error" in parsed) return { error: parsed.error };
+  const { skills } = parsed;
 
   const { error } = await supabase.from("learning_environments").update({ skill_framework: skills }).eq("id", environmentId);
   if (error) return { error: `Couldn't save: ${error.message}` };
@@ -91,8 +75,13 @@ export async function listStudentsToUpdate(
 // Updates one student in a course: reads any of their answers not yet read,
 // then rebuilds their skill ratings and overview. Called once per student by
 // the "Update all students" button, so each request stays short and a class
-// of any size can't hit the server's time limit.
-export async function updateCourseStudent(environmentId: string, learnerId: string): Promise<{ ok: boolean }> {
+// of any size can't hit the server's time limit. Weeks the new answers belong
+// to get their weekly insight rebuilt too (every week with `everyone`).
+export async function updateCourseStudent(
+  environmentId: string,
+  learnerId: string,
+  { everyone = false }: { everyone?: boolean } = {},
+): Promise<{ ok: boolean }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -118,6 +107,20 @@ export async function updateCourseStudent(environmentId: string, learnerId: stri
     .single();
   if (error || !run) return { ok: false };
 
+  // Decide which weeks to refresh before processing marks the answers as read.
+  const { data: weekRecords } = await supabase
+    .from("dataset_records")
+    .select("datasets!inner(environment_id, workshop_id), processing_results(status)")
+    .eq("learner_id", learnerId)
+    .eq("datasets.environment_id", environmentId)
+    .not("datasets.workshop_id", "is", null)
+    .in("validation_status", ["valid", "valid_with_warnings"]);
+  const weekIds = new Set<string>();
+  for (const r of weekRecords ?? []) {
+    const read = (r.processing_results ?? []).some((pr) => ["success", "warning", "skipped"].includes(pr.status));
+    if (r.datasets?.workshop_id && (everyone || !read)) weekIds.add(r.datasets.workshop_id);
+  }
+
   try {
     const counts = await processRunRecords(supabase, run, { onlyUnprocessed: true });
     const status =
@@ -135,6 +138,18 @@ export async function updateCourseStudent(environmentId: string, learnerId: stri
       })
       .eq("id", run.id);
     await autoUpdateEnvironmentInsight(supabase, learnerId, environmentId);
+    if (weekIds.size > 0) {
+      const [{ data: weeks }, { data: learner }, { data: course }] = await Promise.all([
+        supabase.from("workshops").select("*").in("id", [...weekIds]),
+        supabase.from("learners").select("display_name").eq("id", learnerId).single(),
+        supabase.from("learning_environments").select("name").eq("id", environmentId).single(),
+      ]);
+      if (learner && course) {
+        for (const week of weeks ?? []) {
+          await updateWorkshopInsight(supabase, learnerId, learner.display_name, course.name, week);
+        }
+      }
+    }
     revalidatePath(`/profiles/${learnerId}`);
     return { ok: status !== "failed" };
   } catch {

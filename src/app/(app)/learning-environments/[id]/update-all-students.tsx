@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui";
 import { IslLoader } from "@/components/isl-loader";
 import { listStudentsToUpdate, updateCourseStudent } from "@/app/actions/course";
+import { listWorkshopStudents, updateWorkshopStudent } from "@/app/actions/workshops";
 
 const AT_A_TIME = 3;
 
@@ -14,7 +15,16 @@ type Progress = { total: number; done: number; failed: number };
 // time), so a big class never hits the server's time limit and the counter
 // can show real progress. Answers already read are skipped on the server, so
 // clicking again after an interruption just finishes the rest.
-export function UpdateAllStudents({ environmentId, disabledReason }: { environmentId: string; disabledReason: string | null }) {
+// With `workshopId` it rebuilds that week's insights for everyone in the week.
+export function UpdateAllStudents({
+  environmentId,
+  workshopId,
+  disabledReason,
+}: {
+  environmentId: string;
+  workshopId?: string;
+  disabledReason: string | null;
+}) {
   const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
   const [running, setRunning] = useState(false);
@@ -29,9 +39,11 @@ export function UpdateAllStudents({ environmentId, disabledReason }: { environme
     setUpToDate(false);
     setProgress(null);
     try {
-      const students = await listStudentsToUpdate(environmentId, { everyone });
+      const students = workshopId
+        ? await listWorkshopStudents(workshopId)
+        : await listStudentsToUpdate(environmentId, { everyone });
       if (students.length === 0) {
-        if (everyone) setError("No matched form answers yet. Upload a form file for this course first.");
+        if (everyone || workshopId) setError("No matched form answers yet. Upload a form file first.");
         else setUpToDate(true);
         return;
       }
@@ -43,7 +55,9 @@ export function UpdateAllStudents({ environmentId, disabledReason }: { environme
           for (let s = queue.shift(); s; s = queue.shift()) {
             let ok = false;
             try {
-              ok = (await updateCourseStudent(environmentId, s.id)).ok;
+              ok = workshopId
+                ? (await updateWorkshopStudent(workshopId, s.id)).ok
+                : (await updateCourseStudent(environmentId, s.id, { everyone })).ok;
             } catch {
               ok = false;
             }
@@ -65,22 +79,26 @@ export function UpdateAllStudents({ environmentId, disabledReason }: { environme
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <PrimaryButton type="button" onClick={() => start()} disabled={running || Boolean(disabledReason)}>
-          {running ? "Updating…" : "Update all students"}
+          {running ? "Updating…" : workshopId ? "Update this week" : "Update all students"}
         </PrimaryButton>
         {disabledReason && <span className="text-sm text-foreground-muted">{disabledReason}</span>}
       </div>
-      <p className="text-xs text-foreground-muted">
-        Only students with new answers are updated.{" "}
-        <button
-          type="button"
-          onClick={() => start(true)}
-          disabled={running || Boolean(disabledReason)}
-          className="font-medium text-isl-blue hover:underline disabled:opacity-50"
-        >
-          Re-rate everyone
-        </button>{" "}
-        after changing the course&apos;s skills.
-      </p>
+      {workshopId ? (
+        <p className="text-xs text-foreground-muted">Rebuilds every student&apos;s insights for this week from this week&apos;s forms.</p>
+      ) : (
+        <p className="text-xs text-foreground-muted">
+          Only students with new answers are updated.{" "}
+          <button
+            type="button"
+            onClick={() => start(true)}
+            disabled={running || Boolean(disabledReason)}
+            className="font-medium text-isl-blue hover:underline disabled:opacity-50"
+          >
+            Re-rate everyone
+          </button>{" "}
+          after changing the course&apos;s skills.
+        </p>
+      )}
       {upToDate && (
         <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-success">
           Everyone is up to date. There are no new answers since the last update.
@@ -102,7 +120,7 @@ export function UpdateAllStudents({ environmentId, disabledReason }: { environme
           }`}
         >
           {progress.failed
-            ? `${progress.done - progress.failed} of ${progress.total} students updated. ${progress.failed} couldn't be updated — click “Update all students” again to retry them.`
+            ? `${progress.done - progress.failed} of ${progress.total} students updated. ${progress.failed} couldn't be updated — click the button again to retry them.`
             : `All ${progress.total} students are updated.`}
         </div>
       )}

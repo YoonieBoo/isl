@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, EntityHero, IconCard, PrimaryButton, SecondaryButton, StatCard } from "@/components/ui";
 import { ArchiveButton } from "@/app/(app)/learning-environments/[id]/archive-button";
 import { CourseSkillsEditor } from "@/app/(app)/learning-environments/[id]/course-skills-editor";
+import { AddWorkshopForm } from "@/app/(app)/learning-environments/[id]/add-workshop-form";
+import { saveCourseSkills } from "@/app/actions/course";
+import { workshopLabel } from "@/lib/workshops";
 import { UpdateAllStudents } from "@/app/(app)/learning-environments/[id]/update-all-students";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { courseCode } from "@/lib/course-code";
@@ -11,6 +14,7 @@ import { getSkillFramework } from "@/lib/skills/frameworks";
 import {
   BookOpenIcon,
   BuildingIcon,
+  CalendarIcon,
   ClipboardCheckIcon,
   DatabaseIcon,
   LightBulbIcon,
@@ -30,8 +34,14 @@ export default async function LearningEnvironmentDetailPage({
   const { uploaded } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: env, error }, { count: learnerCount }, { data: datasets }, { data: runs }, { data: insights }] =
-    await Promise.all([
+  const [
+    { data: env, error },
+    { count: learnerCount },
+    { data: datasets },
+    { data: runs },
+    { data: insights },
+    { data: workshops },
+  ] = await Promise.all([
       supabase.from("learning_environments").select("*").eq("id", id).single(),
       supabase
         .from("learner_environments")
@@ -40,6 +50,11 @@ export default async function LearningEnvironmentDetailPage({
       supabase.from("datasets").select("id, record_count, validation_status").eq("environment_id", id),
       supabase.from("processing_runs").select("id").eq("environment_id", id),
       supabase.from("learner_insights").select("id, status").eq("environment_id", id),
+      supabase
+        .from("workshops")
+        .select("id, week_number, title, workshop_date, skill_framework, datasets(id)")
+        .eq("environment_id", id)
+        .order("week_number"),
     ]);
 
   if (error || !env) notFound();
@@ -165,12 +180,52 @@ export default async function LearningEnvironmentDetailPage({
       )}
 
       <div className="mt-6">
+        <IconCard icon={CalendarIcon} iconClassName="bg-sky-50 text-sky-600" title="Workshops">
+          <p className="mb-4 text-sm text-foreground-muted">
+            Each week has its own skills and insights. Open a week to see its students.
+          </p>
+          {workshops && workshops.length > 0 ? (
+            <ul className="mb-4 divide-y divide-border rounded-lg border border-border">
+              {workshops.map((w) => (
+                <li key={w.id}>
+                  <Link
+                    href={`/learning-environments/${env.id}/workshops/${w.id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-surface-pale"
+                  >
+                    <span className="font-medium text-foreground">{workshopLabel(w)}</span>
+                    <span className="text-xs text-foreground-muted">
+                      {[
+                        w.workshop_date
+                          ? new Date(`${w.workshop_date}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                          : null,
+                        `${w.datasets.length} form${w.datasets.length === 1 ? "" : "s"}`,
+                        w.skill_framework ? null : "no skills yet",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mb-4 text-sm text-foreground-muted">No weeks added yet.</p>
+          )}
+          <AddWorkshopForm
+            environmentId={env.id}
+            nextWeek={Math.max(0, ...(workshops ?? []).map((w) => w.week_number)) + 1}
+          />
+        </IconCard>
+      </div>
+
+      <div className="mt-4">
         <IconCard icon={LightBulbIcon} iconClassName="bg-amber-50 text-amber-600" title="Skills">
           <p className="mb-4 text-sm text-foreground-muted">
-            Every student in {courseCode(env.name)} is rated on these same skills, so they can be compared across the class.
+            Every student in {courseCode(env.name)} is rated on these same skills across the whole course, so they can be
+            compared across the class.
           </p>
           <CourseSkillsEditor
-            environmentId={env.id}
+            save={saveCourseSkills.bind(null, env.id)}
             initialSkills={(framework?.skills ?? []).map((s) => ({ key: s.key, name: s.name, description: s.description }))}
           />
         </IconCard>

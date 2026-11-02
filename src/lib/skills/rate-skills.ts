@@ -23,7 +23,8 @@ const EVIDENCE_SHEET_ANSWER = "raw_evidence";
 
 type Answer = { id: string; form: string; question: string; text: string; processingResultId: string | null };
 
-async function gatherAnswers(supabase: Supabase, learnerId: string, environmentId: string): Promise<Answer[]> {
+// workshopId: only that week's uploaded forms (weekly insights); omitted = every form in the course.
+async function gatherAnswers(supabase: Supabase, learnerId: string, environmentId: string, workshopId?: string): Promise<Answer[]> {
   const records: {
     id: string;
     source_data: unknown;
@@ -31,11 +32,13 @@ async function gatherAnswers(supabase: Supabase, learnerId: string, environmentI
     processing_results: { id: string; created_at: string }[];
   }[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data } = await supabase
+    let query = supabase
       .from("dataset_records")
-      .select("id, source_data, datasets!inner(name, environment_id), processing_results(id, created_at)")
+      .select("id, source_data, datasets!inner(name, environment_id, workshop_id), processing_results(id, created_at)")
       .eq("learner_id", learnerId)
-      .eq("datasets.environment_id", environmentId)
+      .eq("datasets.environment_id", environmentId);
+    if (workshopId) query = query.eq("datasets.workshop_id", workshopId);
+    const { data } = await query
       // Skips rows marked invalid, including "Already uploaded" duplicates.
       .in("validation_status", ["valid", "valid_with_warnings"])
       .range(from, from + 999);
@@ -205,8 +208,9 @@ export async function rateLearnerSkills(
   learnerName: string,
   environmentId: string,
   framework: SkillFramework,
+  workshopId?: string,
 ): Promise<SkillRatings | null> {
-  const answers = await gatherAnswers(supabase, learnerId, environmentId);
+  const answers = await gatherAnswers(supabase, learnerId, environmentId, workshopId);
   if (answers.length === 0) return null;
 
   const parsed = (await callOpenAi(buildPrompt(learnerName, framework, answers))) as {

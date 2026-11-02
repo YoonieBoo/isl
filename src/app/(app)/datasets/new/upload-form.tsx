@@ -6,13 +6,19 @@ import { uploadDatasets, type FormState } from "@/app/actions/datasets";
 
 export function UploadForm({
   environments,
+  workshops,
   defaultEnvironmentId,
+  defaultWorkshopId,
   returnTo,
 }: {
   environments: { id: string; name: string }[];
+  workshops: { id: string; environment_id: string; week_number: number; title: string }[];
   defaultEnvironmentId?: string;
+  defaultWorkshopId?: string;
   returnTo?: string;
 }) {
+  const [environmentId, setEnvironmentId] = useState(defaultEnvironmentId ?? "");
+  const weeks = workshops.filter((w) => w.environment_id === environmentId);
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     uploadDatasets,
     undefined,
@@ -24,7 +30,13 @@ export function UploadForm({
       {returnTo && <input type="hidden" name="returnTo" value={returnTo} />}
 
       <Field label="Learning environment" htmlFor="environmentId" required>
-        <Select id="environmentId" name="environmentId" required defaultValue={defaultEnvironmentId ?? ""}>
+        <Select
+          id="environmentId"
+          name="environmentId"
+          required
+          value={environmentId}
+          onChange={(e) => setEnvironmentId(e.target.value)}
+        >
           <option value="" disabled>
             Select an environment
           </option>
@@ -35,6 +47,19 @@ export function UploadForm({
           ))}
         </Select>
       </Field>
+
+      {weeks.length > 0 && (
+        <Field label="Which week are these forms from?" htmlFor="workshopId">
+          <Select key={environmentId} id="workshopId" name="workshopId" defaultValue={defaultWorkshopId ?? ""}>
+            <option value="">Not a weekly form</option>
+            {weeks.map((w) => (
+              <option key={w.id} value={w.id}>
+                Week {w.week_number} — {w.title}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
 
       <Field label="Files (CSV or XLSX)" htmlFor="files" required>
         <input

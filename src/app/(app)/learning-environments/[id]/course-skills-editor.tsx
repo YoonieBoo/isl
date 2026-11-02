@@ -2,21 +2,24 @@
 
 import { useActionState, useState } from "react";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
-import { saveCourseSkills, type SkillsFormState } from "@/app/actions/course";
+import type { SkillsFormState } from "@/app/actions/course";
 
 type Row = { id: number; key: string; name: string; description: string };
 
 const fieldClass =
   "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-isl-blue";
 
-// The course's fixed skill list. Every student in the course is rated on
-// exactly these skills, so they can be compared side by side.
+// A fixed skill list (a course's, or one week's). Every student is rated on
+// exactly these skills, so they can be compared side by side. `save` is the
+// server action already bound to the course or week.
 export function CourseSkillsEditor({
-  environmentId,
+  save,
   initialSkills,
+  savedMessage = "Saved. Click “Update all students” to rate everyone on these skills.",
 }: {
-  environmentId: string;
+  save: (prev: SkillsFormState, formData: FormData) => Promise<SkillsFormState>;
   initialSkills: { key: string; name: string; description: string }[];
+  savedMessage?: string;
 }) {
   const [rows, setRows] = useState<Row[]>(() =>
     initialSkills.length > 0
@@ -24,7 +27,7 @@ export function CourseSkillsEditor({
       : Array.from({ length: 3 }, (_, i) => ({ id: i, key: "", name: "", description: "" })),
   );
   const [state, formAction, pending] = useActionState<SkillsFormState, FormData>(
-    saveCourseSkills.bind(null, environmentId),
+    save,
     undefined,
   );
 
@@ -74,7 +77,7 @@ export function CourseSkillsEditor({
         <PrimaryButton type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save skills"}
         </PrimaryButton>
-        {state?.saved && !pending && <span className="text-sm text-success">Saved. Click “Update all students” to rate everyone on these skills.</span>}
+        {state?.saved && !pending && <span className="text-sm text-success">{savedMessage}</span>}
         {state?.error && <span className="text-sm text-danger">{state.error}</span>}
       </div>
     </form>

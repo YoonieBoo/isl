@@ -137,6 +137,7 @@ export type Database = {
           uploaded_by: string
           validation_status: Database["public"]["Enums"]["validation_status"]
           validation_summary: Json
+          workshop_id: string | null
         }
         Insert: {
           created_at?: string
@@ -149,6 +150,7 @@ export type Database = {
           uploaded_by: string
           validation_status?: Database["public"]["Enums"]["validation_status"]
           validation_summary?: Json
+          workshop_id?: string | null
         }
         Update: {
           created_at?: string
@@ -161,8 +163,16 @@ export type Database = {
           uploaded_by?: string
           validation_status?: Database["public"]["Enums"]["validation_status"]
           validation_summary?: Json
+          workshop_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "datasets_workshop_id_fkey"
+            columns: ["workshop_id"]
+            isOneToOne: false
+            referencedRelation: "workshops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "datasets_environment_id_fkey"
             columns: ["environment_id"]
@@ -880,6 +890,89 @@ export type Database = {
             columns: ["reviewer_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workshop_insights: {
+        Row: {
+          answer_count: number
+          id: string
+          learner_id: string
+          overview: string | null
+          skill_ratings: Json | null
+          updated_at: string
+          workshop_id: string
+        }
+        Insert: {
+          answer_count?: number
+          id?: string
+          learner_id: string
+          overview?: string | null
+          skill_ratings?: Json | null
+          updated_at?: string
+          workshop_id: string
+        }
+        Update: {
+          answer_count?: number
+          id?: string
+          learner_id?: string
+          overview?: string | null
+          skill_ratings?: Json | null
+          updated_at?: string
+          workshop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workshop_insights_learner_id_fkey"
+            columns: ["learner_id"]
+            isOneToOne: false
+            referencedRelation: "learners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workshop_insights_workshop_id_fkey"
+            columns: ["workshop_id"]
+            isOneToOne: false
+            referencedRelation: "workshops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workshops: {
+        Row: {
+          created_at: string
+          environment_id: string
+          id: string
+          skill_framework: Json | null
+          title: string
+          week_number: number
+          workshop_date: string | null
+        }
+        Insert: {
+          created_at?: string
+          environment_id: string
+          id?: string
+          skill_framework?: Json | null
+          title: string
+          week_number: number
+          workshop_date?: string | null
+        }
+        Update: {
+          created_at?: string
+          environment_id?: string
+          id?: string
+          skill_framework?: Json | null
+          title?: string
+          week_number?: number
+          workshop_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workshops_environment_id_fkey"
+            columns: ["environment_id"]
+            isOneToOne: false
+            referencedRelation: "learning_environments"
             referencedColumns: ["id"]
           },
         ]
