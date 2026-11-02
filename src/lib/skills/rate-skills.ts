@@ -147,6 +147,9 @@ RULES:
 - Pre-workshop forms ("Pre-Workshop", "Pre-workshop Response") ask for first guesses BEFORE the lesson, so a naive pre-workshop answer is expected and must not by itself pull a level down. Base the level mainly on workshop submissions and reflections; use pre-workshop answers mostly to notice growth.
 - Use needs_support only when the relevant answers, taken together, show misunderstanding or are consistently very thin. If the picture is mixed, use developing.
 - Do not judge personality, intelligence, or English fluency.
+- Rate a skill ONLY from answers whose content is actually about that skill (what the student says they did, decided, found or think about it). If no answer is about a skill, use not_enough_evidence.
+- How well an answer is written (short, vague, unclear, grammar) is never evidence for a skill on its own. In particular, do not rate communication, presentation or pitching skills from writing style: rate them only from answers where the student is asked to explain, present or pitch something to an audience.
+- Every quote must come from an answer that is about that skill. Never reuse a quote about one topic as evidence for an unrelated skill.
 - Never use gendered pronouns (he/she/his/her). Refer to the learner by first name or as "they".
 - For each skill give a 1-2 sentence "summary" explaining the level, in plain language, referring to what the learner wrote.
 - For each skill except not_enough_evidence, give 1-${MAX_QUOTES_PER_SKILL} pieces of "evidence": the answer id and an EXACT quote copied word for word from that answer (8-35 words, enough to show the reasoning — not just a short label or a multiple-choice option). Never paraphrase inside a quote.
