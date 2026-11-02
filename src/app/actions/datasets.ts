@@ -8,6 +8,7 @@ import { logActivity } from "@/lib/activity-log";
 import { parseDatasetFile } from "@/lib/dataset-parsing";
 import { suggestColumns } from "@/lib/dataset-column-detection";
 import { normalizeStudentId } from "@/lib/student-id";
+import { NON_ANSWER_FIELD } from "@/lib/answer-fields";
 
 export type FormState = { error: string } | undefined;
 
@@ -159,7 +160,19 @@ type ValidationCounts = {
   emptyRecords: number;
   newLearnersCreated: number;
   matchedExistingLearners: number;
+  alreadyUploaded: number;
 };
+
+// The learner's actual answers in a form row (question columns only, not
+// timestamp/email/name/ID), normalised — two rows with the same signature are
+// the same submission even if exported at different times.
+function answerSignature(sourceData: Record<string, string>): string {
+  return Object.entries(sourceData)
+    .filter(([field, value]) => !NON_ANSWER_FIELD.test(field) && (value ?? "").toString().trim() !== "")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([field, value]) => `${field.trim().toLowerCase()}=${String(value).trim().replace(/\s+/g, " ").toLowerCase()}`)
+    .join("|");
+}
 
 // Shared by the manual "Run validation" button and by auto-validation right
 // after upload (when the ID/name columns were confidently guessed) — same
@@ -192,6 +205,7 @@ async function runDatasetValidation(
     emptyRecords: 0,
     newLearnersCreated: 0,
     matchedExistingLearners: 0,
+    alreadyUploaded: 0,
   };
 
   // A dataset shaped as a Learning Evidence log (one row per evidence item)
@@ -224,6 +238,34 @@ async function runDatasetValidation(
   // Cache learner lookups/creates within this run so repeated IDs across
   // rows don't each trigger their own select + insert round-trip.
   const learnerCache = new Map<string, string>();
+
+  // Answers already stored for a learner in this course (from earlier
+  // uploads, or earlier rows of this file). A row whose answers match one of
+  // these exactly is not stored again — so uploading a small test file and
+  // later the full export, or the same file twice, never double-counts.
+  const knownAnswers = new Map<string, Set<string>>();
+  async function answersFor(learnerId: string): Promise<Set<string>> {
+    let known = knownAnswers.get(learnerId);
+    if (known) return known;
+    known = new Set();
+    for (let from = 0; ; from += 1000) {
+      const { data } = await supabase
+        .from("dataset_records")
+        .select("source_data, datasets!inner(environment_id)")
+        .eq("learner_id", learnerId)
+        .eq("datasets.environment_id", dataset!.environment_id)
+        .neq("dataset_id", datasetId)
+        .in("validation_status", ["valid", "valid_with_warnings"])
+        .range(from, from + 999);
+      for (const r of data ?? []) {
+        const sig = answerSignature(r.source_data as Record<string, string>);
+        if (sig) known.add(sig);
+      }
+      if (!data || data.length < 1000) break;
+    }
+    knownAnswers.set(learnerId, known);
+    return known;
+  }
 
   for (const record of records) {
     const sourceData = record.source_data as Record<string, string>;
@@ -296,6 +338,24 @@ async function runDatasetValidation(
           { learner_id: learnerId, environment_id: dataset.environment_id },
           { onConflict: "learner_id,environment_id", ignoreDuplicates: true },
         );
+    }
+
+    const signature = answerSignature(sourceData);
+    if (signature) {
+      const known = await answersFor(learnerId);
+      if (known.has(signature)) {
+        counts.alreadyUploaded += 1;
+        await supabase
+          .from("dataset_records")
+          .update({
+            validation_status: "invalid",
+            validation_notes: "Already uploaded — same answers as an earlier upload for this learner",
+            learner_id: learnerId,
+          })
+          .eq("id", record.id);
+        continue;
+      }
+      known.add(signature);
     }
 
     await supabase

@@ -53,8 +53,13 @@ export async function saveCourseSkills(
   return { saved: true };
 }
 
-// Students in the course who have matched form answers to analyse.
-export async function listStudentsToUpdate(environmentId: string): Promise<{ id: string; name: string }[]> {
+// Students in the course to update. By default only those with answers the
+// AI hasn't read yet (new uploads), so students already up to date are left
+// alone; `everyone` re-rates the whole course (e.g. after its skills change).
+export async function listStudentsToUpdate(
+  environmentId: string,
+  { everyone = false }: { everyone?: boolean } = {},
+): Promise<{ id: string; name: string }[]> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -65,12 +70,17 @@ export async function listStudentsToUpdate(environmentId: string): Promise<{ id:
   for (let from = 0; ; from += 1000) {
     const { data } = await supabase
       .from("dataset_records")
-      .select("learner_id, datasets!inner(environment_id)")
+      .select("learner_id, datasets!inner(environment_id), processing_results(status)")
       .eq("datasets.environment_id", environmentId)
       .in("validation_status", ["valid", "valid_with_warnings"])
       .not("learner_id", "is", null)
       .range(from, from + 999);
-    for (const r of data ?? []) if (r.learner_id) ids.add(r.learner_id);
+    for (const r of data ?? []) {
+      if (!r.learner_id) continue;
+      // Same rule processRunRecords uses for "already read" answers.
+      const read = (r.processing_results ?? []).some((pr) => ["success", "warning", "skipped"].includes(pr.status));
+      if (everyone || !read) ids.add(r.learner_id);
+    }
     if (!data || data.length < 1000) break;
   }
   if (ids.size === 0) return [];

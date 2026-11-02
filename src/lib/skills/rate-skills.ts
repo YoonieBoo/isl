@@ -36,6 +36,8 @@ async function gatherAnswers(supabase: Supabase, learnerId: string, environmentI
       .select("id, source_data, datasets!inner(name, environment_id), processing_results(id, created_at)")
       .eq("learner_id", learnerId)
       .eq("datasets.environment_id", environmentId)
+      // Skips rows marked invalid, including "Already uploaded" duplicates.
+      .in("validation_status", ["valid", "valid_with_warnings"])
       .range(from, from + 999);
     records.push(...((data ?? []) as typeof records));
     if (!data || data.length < 1000) break;

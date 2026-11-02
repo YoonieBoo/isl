@@ -19,14 +19,20 @@ export function UpdateAllStudents({ environmentId, disabledReason }: { environme
   const [progress, setProgress] = useState<Progress | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [upToDate, setUpToDate] = useState(false);
 
-  async function start() {
+  // By default only students with new answers are updated; `everyone`
+  // re-rates the whole course (needed after its skills change).
+  async function start(everyone = false) {
     setRunning(true);
     setError(null);
+    setUpToDate(false);
+    setProgress(null);
     try {
-      const students = await listStudentsToUpdate(environmentId);
+      const students = await listStudentsToUpdate(environmentId, { everyone });
       if (students.length === 0) {
-        setError("No matched form answers yet. Upload a form file for this course first.");
+        if (everyone) setError("No matched form answers yet. Upload a form file for this course first.");
+        else setUpToDate(true);
         return;
       }
       const state: Progress = { total: students.length, done: 0, failed: 0 };
@@ -58,11 +64,28 @@ export function UpdateAllStudents({ environmentId, disabledReason }: { environme
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <PrimaryButton type="button" onClick={start} disabled={running || Boolean(disabledReason)}>
+        <PrimaryButton type="button" onClick={() => start()} disabled={running || Boolean(disabledReason)}>
           {running ? "Updating…" : "Update all students"}
         </PrimaryButton>
         {disabledReason && <span className="text-sm text-foreground-muted">{disabledReason}</span>}
       </div>
+      <p className="text-xs text-foreground-muted">
+        Only students with new answers are updated.{" "}
+        <button
+          type="button"
+          onClick={() => start(true)}
+          disabled={running || Boolean(disabledReason)}
+          className="font-medium text-isl-blue hover:underline disabled:opacity-50"
+        >
+          Re-rate everyone
+        </button>{" "}
+        after changing the course&apos;s skills.
+      </p>
+      {upToDate && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-success">
+          Everyone is up to date. There are no new answers since the last update.
+        </div>
+      )}
 
       {running && progress && (
         <div className="flex items-center gap-3 rounded-lg border border-isl-blue-pale bg-isl-blue-pale/50 p-3 text-sm text-foreground">
