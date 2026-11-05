@@ -46,7 +46,7 @@ export default async function DashboardPage() {
         {(environments ?? []).map((env) => (
           <Link
             key={env.id}
-            href={`/learners?environment=${env.id}`}
+            href={`/learning-environments/${env.id}`}
             className="flex items-center gap-3 rounded-xl border border-border bg-surface p-5 transition-colors hover:border-isl-blue hover:bg-isl-blue-pale/40"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-isl-blue-pale text-isl-blue">

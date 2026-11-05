@@ -86,21 +86,27 @@ export async function setFileWorkshop(datasetId: string, workshopId: string | nu
   revalidatePath(`/learning-environments/${environmentId}`, "layout");
 }
 
-// Students who submitted any form in this week, for the week page and its
-// "Update this week" button.
-export async function listWorkshopStudents(workshopId: string): Promise<{ id: string; name: string }[]> {
+// Students who submitted any form in this week. With `onlyNew`, just those
+// whose answers the AI hasn't read yet (for the week's "Update students").
+export async function listWorkshopStudents(
+  workshopId: string,
+  { onlyNew = false }: { onlyNew?: boolean } = {},
+): Promise<{ id: string; name: string }[]> {
   const { supabase, user } = await requireUser();
   if (!user) throw new Error("Please sign in again.");
   const ids = new Set<string>();
   for (let from = 0; ; from += 1000) {
     const { data } = await supabase
       .from("dataset_records")
-      .select("learner_id, datasets!inner(workshop_id)")
+      .select("learner_id, datasets!inner(workshop_id), processing_results(status)")
       .eq("datasets.workshop_id", workshopId)
       .in("validation_status", ["valid", "valid_with_warnings"])
       .not("learner_id", "is", null)
       .range(from, from + 999);
-    for (const r of data ?? []) if (r.learner_id) ids.add(r.learner_id);
+    for (const r of data ?? []) {
+      const read = (r.processing_results ?? []).some((pr) => ["success", "warning", "skipped"].includes(pr.status));
+      if (r.learner_id && !(onlyNew && read)) ids.add(r.learner_id);
+    }
     if (!data || data.length < 1000) break;
   }
   if (ids.size === 0) return [];

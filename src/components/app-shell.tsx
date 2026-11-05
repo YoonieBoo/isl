@@ -76,6 +76,9 @@ function UserMenu({ userEmail }: { userEmail: string }) {
   );
 }
 
+// One course (and its weeks/students), as opposed to the list of all courses.
+const COURSE_PAGE = /^\/learning-environments\/(?!new$)[^/]+/;
+
 export function AppShell({
   userEmail,
   children,
@@ -111,9 +114,9 @@ export function AppShell({
           {NAV_ITEMS.map((item) => {
             const isActive =
               item.href === "/"
-                ? // Student pages are reached from the start page, so it stays highlighted there.
-                  pathname === "/" || pathname.startsWith("/learners") || pathname.startsWith("/profiles")
-                : pathname.startsWith(item.href);
+                ? // Course, week and student pages are reached from the start page, so it stays highlighted there.
+                  pathname === "/" || pathname.startsWith("/learners") || pathname.startsWith("/profiles") || COURSE_PAGE.test(pathname)
+                : pathname.startsWith(item.href) && !(item.href === "/learning-environments" && COURSE_PAGE.test(pathname));
             const Icon = item.icon;
             return (
               <Link

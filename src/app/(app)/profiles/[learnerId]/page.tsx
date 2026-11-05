@@ -323,7 +323,15 @@ export default async function LearnerProfilePage({
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <BackLink fallbackHref="/" />
+        <BackLink
+          fallbackHref={
+            !selectedEnvironmentId
+              ? "/"
+              : weekMode && typeof workshopFilter === "string"
+                ? `/learning-environments/${selectedEnvironmentId}/workshops/${workshopFilter}`
+                : `/learning-environments/${selectedEnvironmentId}/students`
+          }
+        />
         <Link href={`/learners/${learner.id}`} className="text-sm font-medium text-foreground-muted hover:text-isl-blue hover:underline">
           Manage learner record
         </Link>
@@ -334,7 +342,9 @@ export default async function LearnerProfilePage({
           title={learner.display_name}
           action={
             <div className="flex items-center gap-2">
-              <CourseFilter environments={allCourses} selected={selectedEnvironmentId} />
+              {/* Opened from a course or week, the course is already known: the
+                  week tabs below switch views instead. */}
+              {!selectedEnvironmentId && <CourseFilter environments={allCourses} selected={null} />}
               {!weekMode && (
                 <>
                   <Link
@@ -361,10 +371,10 @@ export default async function LearnerProfilePage({
         </div>
       )}
 
-      {selectedEnvironmentId && (weeks.length > 0 || weekMode) && (
+      {selectedEnvironmentId && courses[0] && (
         <nav aria-label="Week" className="mt-6 flex flex-wrap gap-2">
           {[
-            { id: null as string | null, label: "Whole course" },
+            { id: null as string | null, label: `${courseCode(courses[0].name)} · Whole course` },
             ...weeks.map((w) => ({ id: w.workshops.id as string | null, label: `Week ${w.workshops.week_number}` })),
           ].map((tab) => {
             const active = tab.id ? tab.id === workshopFilter : !weekMode;

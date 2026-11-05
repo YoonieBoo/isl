@@ -2,21 +2,27 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BackLink } from "@/components/back-link";
-import { Card, IconCard, PageHeader, SecondaryButton } from "@/components/ui";
-import { LightBulbIcon, UserIcon } from "@/components/icons";
+import { Card, PageHeader } from "@/components/ui";
 import { CourseSkillsEditor } from "@/app/(app)/learning-environments/[id]/course-skills-editor";
+import { QuickUpload } from "@/app/(app)/learning-environments/[id]/quick-upload";
+import { StudentList, UploadBanner, splitPending } from "@/app/(app)/learning-environments/[id]/student-list";
 import { UpdateAllStudents } from "@/app/(app)/learning-environments/[id]/update-all-students";
 import { listWorkshopStudents, saveWorkshopSkills, setFileWorkshop } from "@/app/actions/workshops";
 import { courseCode } from "@/lib/course-code";
 import { workshopFramework, workshopLabel } from "@/lib/workshops";
 
-// "Update this week" runs one server request per student from this page.
+// "Update students" runs one server request per student from this page.
 export const maxDuration = 300;
 
-// One week of a course: the students who sent in this week's forms (each opens
-// their weekly insights), then the week's skills and forms, folded away.
-export default async function WorkshopPage({ params }: PageProps<"/learning-environments/[id]/workshops/[workshopId]">) {
+// One week of a course: upload its forms and update, then the students who
+// sent in this week's forms (each opens their weekly insights). The week's
+// skills and files sit behind "Week settings".
+export default async function WorkshopPage({
+  params,
+  searchParams,
+}: PageProps<"/learning-environments/[id]/workshops/[workshopId]">) {
   const { id, workshopId } = await params;
+  const { uploaded, failed } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: workshop }, { data: env }, { data: courseFiles }, { data: weekInsights }] = await Promise.all([
@@ -24,18 +30,24 @@ export default async function WorkshopPage({ params }: PageProps<"/learning-envi
     supabase.from("learning_environments").select("id, name").eq("id", id).single(),
     supabase
       .from("datasets")
-      .select("id, name, record_count, workshop_id, created_at")
+      .select("id, name, record_count, workshop_id, validation_status, validation_summary")
       .eq("environment_id", id)
       .order("created_at", { ascending: false }),
     supabase.from("workshop_insights").select("learner_id").eq("workshop_id", workshopId),
   ]);
   if (!workshop || !env) notFound();
 
-  const students = await listWorkshopStudents(workshopId);
   const updated = new Set((weekInsights ?? []).map((w) => w.learner_id));
+  const students = (await listWorkshopStudents(workshopId)).map((s) => ({
+    ...s,
+    href: `/profiles/${s.id}?environment=${env.id}&workshop=${workshop.id}`,
+    note: updated.has(s.id) ? undefined : "not updated yet",
+  }));
   const framework = workshopFramework(workshop, env.name);
   const weekFiles = (courseFiles ?? []).filter((f) => f.workshop_id === workshop.id);
   const otherFiles = (courseFiles ?? []).filter((f) => !f.workshop_id);
+  const { matching, needsColumns } = splitPending(weekFiles.filter((f) => f.validation_status === "pending"));
+  const here = `/learning-environments/${env.id}/workshops/${workshop.id}`;
 
   return (
     <div>
@@ -58,66 +70,56 @@ export default async function WorkshopPage({ params }: PageProps<"/learning-envi
             .join(" · ")}
         />
       </div>
+      <UploadBanner
+        uploaded={Number(uploaded) || 0}
+        failed={Number(failed) || 0}
+        matching={matching}
+        needsColumns={needsColumns}
+      />
 
-      <div className="mt-6">
-        <IconCard icon={UserIcon} title={`Students (${students.length})`}>
-          {students.length > 0 ? (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {students.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    href={`/profiles/${s.id}?environment=${env.id}&workshop=${workshop.id}`}
-                    className="flex items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-surface-pale"
-                  >
-                    <span className="font-medium text-isl-blue">{s.name}</span>
-                    {!updated.has(s.id) && <span className="text-xs text-foreground-muted">not updated yet</span>}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-foreground-muted">
-              No students yet. Upload this week&apos;s form files under “Week settings” below.
-            </p>
-          )}
-          <div className="mt-4">
-            <UpdateAllStudents
-              environmentId={env.id}
-              workshopId={workshop.id}
-              disabledReason={!framework ? "Add and save this week's skills below first." : null}
-            />
-          </div>
-        </IconCard>
-      </div>
+      <Card className="mt-6">
+        <div className="flex flex-wrap items-start gap-3">
+          <QuickUpload environmentId={env.id} workshopId={workshop.id} returnTo={here} />
+          <UpdateAllStudents
+            environmentId={env.id}
+            workshopId={workshop.id}
+            disabledReason={
+              !framework
+                ? "Set this week's skills first (Week settings below)."
+                : matching
+                  ? "Still matching students from your upload…"
+                  : null
+            }
+          />
+        </div>
+        <h2 className="mt-6 text-base font-semibold text-foreground">Students ({students.length})</h2>
+        <div className="mt-3">
+          <StudentList students={students} emptyText="No students yet. Upload this week's form files to add them." />
+        </div>
+      </Card>
 
-      <details className="group mt-4" open={!framework || weekFiles.length === 0}>
+      <details className="group mt-4" open={!framework}>
         <summary className="cursor-pointer list-none text-sm font-medium text-isl-blue hover:underline [&::-webkit-details-marker]:hidden">
-          <span className="group-open:hidden">Show week settings (skills and forms)</span>
+          <span className="group-open:hidden">Week settings</span>
           <span className="hidden group-open:inline">Hide week settings</span>
         </summary>
 
         <div className="mt-4 space-y-4">
-          <IconCard icon={LightBulbIcon} iconClassName="bg-amber-50 text-amber-600" title="This week's skills">
-            <p className="mb-4 text-sm text-foreground-muted">
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">This week&apos;s skills</h2>
+            <p className="mb-4 mt-1 text-sm text-foreground-muted">
               Students are rated on these skills using only this week&apos;s forms. Match them to the workshop and lecture
               slides.
             </p>
             <CourseSkillsEditor
               save={saveWorkshopSkills.bind(null, workshop.id)}
               initialSkills={(framework?.skills ?? []).map((s) => ({ key: s.key, name: s.name, description: s.description }))}
-              savedMessage="Saved. Click “Update this week” to rate everyone on these skills."
+              savedMessage="Saved. Click “Re-rate everyone” above to rate everyone on these skills."
             />
-          </IconCard>
+          </Card>
 
           <Card>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-semibold text-foreground">This week&apos;s forms</h2>
-              <Link
-                href={`/datasets/new?environment=${env.id}&workshop=${workshop.id}&returnTo=/learning-environments/${env.id}`}
-              >
-                <SecondaryButton>Upload a form file</SecondaryButton>
-              </Link>
-            </div>
+            <h2 className="text-base font-semibold text-foreground">This week&apos;s form files</h2>
             {weekFiles.length > 0 ? (
               <ul className="mt-3 space-y-2 text-sm">
                 {weekFiles.map((f) => (
@@ -134,12 +136,12 @@ export default async function WorkshopPage({ params }: PageProps<"/learning-envi
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-sm text-foreground-muted">No forms in this week yet.</p>
+              <p className="mt-2 text-sm text-foreground-muted">No form files in this week yet.</p>
             )}
 
             {otherFiles.length > 0 && (
               <div className="mt-5 border-t border-border pt-4">
-                <p className="text-sm font-medium text-foreground">Already uploaded to {courseCode(env.name)}, not in any week</p>
+                <p className="text-sm font-medium text-foreground">Uploaded to {courseCode(env.name)} but not in any week</p>
                 <ul className="mt-2 space-y-2 text-sm">
                   {otherFiles.map((f) => (
                     <li key={f.id} className="flex flex-wrap items-center justify-between gap-2">
