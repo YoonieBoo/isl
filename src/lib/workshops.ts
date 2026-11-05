@@ -83,7 +83,11 @@ export async function updateWorkshopInsight(
       .select("id", { count: "exact", head: true })
       .eq("workshop_id", workshop.id)
       .in("form_stage", ["pre", "post"]);
-    if (count) return "nothing";
+    if (count) {
+      // Drop an older weekly result so it doesn't count in the class summary.
+      await supabase.from("workshop_insights").delete().eq("learner_id", learnerId).eq("workshop_id", workshop.id);
+      return "nothing";
+    }
     ratings = await rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, base);
     if (!ratings) return "nothing";
     overview = await writeCourseOverview({

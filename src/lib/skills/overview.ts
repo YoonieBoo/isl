@@ -30,7 +30,7 @@ const RULES = `Rules:
 - If almost nothing is known yet, say so plainly, e.g. "Work on: Too early to tell; only first-week answers so far."
 - No markdown, no bullet symbols.`;
 
-async function complete(prompt: string): Promise<string | null> {
+export async function complete(prompt: string): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   for (let attempt = 0; attempt < 4; attempt++) {

@@ -14,6 +14,9 @@ import {
   setFileStage,
   setFileWorkshop,
 } from "@/app/actions/workshops";
+import { RefreshSummaryButton } from "@/app/(app)/learning-environments/[id]/workshops/[workshopId]/refresh-summary-button";
+import { OverviewText } from "@/components/overview-text";
+import { readClassSummary } from "@/lib/class-summary";
 import { WeekDetailsForm } from "@/app/(app)/learning-environments/[id]/workshops/[workshopId]/week-details-form";
 import { courseCode } from "@/lib/course-code";
 import { FORM_STAGE_LABEL, workshopFramework, workshopLabel, type FormStageValue } from "@/lib/workshops";
@@ -47,7 +50,7 @@ export default async function WorkshopPage({
       .select("id, name, record_count, workshop_id, form_stage, validation_status, validation_summary")
       .eq("environment_id", id)
       .order("created_at", { ascending: false }),
-    supabase.from("workshop_insights").select("learner_id").eq("workshop_id", workshopId),
+    supabase.from("workshop_insights").select("learner_id, updated_at").eq("workshop_id", workshopId),
   ]);
   if (!workshop || !env) notFound();
 
@@ -62,6 +65,9 @@ export default async function WorkshopPage({
   const otherFiles = (courseFiles ?? []).filter((f) => !f.workshop_id);
   const { matching, needsColumns } = splitPending(weekFiles.filter((f) => f.validation_status === "pending"));
   const here = `/learning-environments/${env.id}/workshops/${workshop.id}`;
+  const summary = readClassSummary(workshop.class_summary);
+  const latestInsight = (weekInsights ?? []).reduce((m, w) => (w.updated_at > m ? w.updated_at : m), "");
+  const summaryStale = Boolean(summary && latestInsight > summary.updatedAt);
 
   return (
     <div>
@@ -124,6 +130,55 @@ export default async function WorkshopPage({
               );
             })}
           </ul>
+        )}
+        {(weekInsights ?? []).length > 0 && (
+          <div className="mt-6 rounded-lg border border-border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-foreground">Class summary</h2>
+              {summary ? (
+                <span className="flex items-center gap-3 text-xs text-foreground-muted">
+                  {summaryStale ? "Students were updated since this was written." : `${summary.students} students`}
+                  <RefreshSummaryButton workshopId={workshop.id} label={summaryStale ? "Update summary" : "Rewrite"} />
+                </span>
+              ) : (
+                <RefreshSummaryButton workshopId={workshop.id} label="Write class summary" />
+              )}
+            </div>
+            {summary && (
+              <>
+                <div className="mt-3">
+                  <OverviewText text={summary.text} />
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[32rem] text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left text-foreground-muted">
+                        <th className="py-2 pr-3 font-medium">Skill</th>
+                        <th className="py-2 pr-3 font-medium">Improved Pre → Post</th>
+                        <th className="py-2 pr-3 font-medium">After class</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.skills.map((s) => (
+                        <tr key={s.key} className="border-b border-border last:border-0">
+                          <td className="py-2 pr-3 font-medium text-foreground">{s.name}</td>
+                          <td className="py-2 pr-3 text-foreground">
+                            {s.compared > 0 ? `${s.improved} of ${s.compared}` : <span className="text-foreground-muted">—</span>}
+                          </td>
+                          <td className="py-2 pr-3 text-foreground-muted">
+                            <span className="text-emerald-700">{s.latest.strong} strong</span> ·{" "}
+                            <span className="text-amber-700">{s.latest.developing} developing</span> ·{" "}
+                            <span className="text-red-700">{s.latest.needs_support} need support</span>
+                            {s.latest.not_shown > 0 && ` · ${s.latest.not_shown} not shown`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
         )}
         <h2 className="mt-6 text-base font-semibold text-foreground">Students ({students.length})</h2>
         <div className="mt-3">

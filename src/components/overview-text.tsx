@@ -1,10 +1,21 @@
 // Overviews are written as short "Label: text" lines so instructors can scan
 // them: course overviews use Doing well / Work on / Worth noting, weekly ones
-// Pre → Post / Learning gap / Next action. Older paragraph overviews still
+// Pre → Post / Learning gap / Next action, a week's class summary Most
+// improved / Common gap / Teacher action. Older paragraph overviews still
 // render as a plain paragraph.
-const LABELS = ["Doing well", "Work on", "Worth noting", "Pre → Post", "Learning gap", "Next action"];
+const LABELS = [
+  "Doing well",
+  "Work on",
+  "Worth noting",
+  "Pre → Post",
+  "Learning gap",
+  "Next action",
+  "Most improved",
+  "Common gap",
+  "Teacher action",
+];
 const canonical = (label: string) => label.toLowerCase().replace(/\s+/g, " ").replace("->", "→");
-export const OVERVIEW_LINE = /^(Doing well|Work on|Worth noting|Pre\s*(?:→|->)\s*Post|Learning gap|Next action)\s*:\s*(.+)$/i;
+export const OVERVIEW_LINE = /^(Doing well|Work on|Worth noting|Pre\s*(?:→|->)\s*Post|Learning gap|Next action|Most improved|Common gap|Teacher action)\s*:\s*(.+)$/i;
 
 export function parseOverview(text: string): { label: string; text: string }[] | null {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);

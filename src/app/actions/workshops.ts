@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activity-log";
 import { parseSkillsForm } from "@/lib/skills/parse-skills-form";
 import type { SkillsFormState } from "@/app/actions/course";
 import { guessFormStage, updateWorkshopInsight, type FormStageValue } from "@/lib/workshops";
+import { refreshWeekClassSummary } from "@/lib/class-summary";
 
 export type WorkshopFormState = { error?: string } | undefined;
 
@@ -176,4 +177,19 @@ export async function saveWorkshopDetails(
   await logActivity(supabase, user.id, "updated", "workshop", workshopId, `Updated week details`);
   revalidatePath(`/learning-environments/${data.environment_id}`, "layout");
   return { saved: true };
+}
+
+// Rebuilds the week's class summary from its students' weekly insights.
+export async function refreshClassSummary(workshopId: string): Promise<{ ok: boolean }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false };
+  const { data: workshop } = await supabase
+    .from("workshops")
+    .select("*, learning_environments(name)")
+    .eq("id", workshopId)
+    .single();
+  if (!workshop?.learning_environments) return { ok: false };
+  const summary = await refreshWeekClassSummary(supabase, workshop, workshop.learning_environments.name);
+  revalidatePath(`/learning-environments/${workshop.environment_id}/workshops/${workshopId}`);
+  return { ok: Boolean(summary) };
 }

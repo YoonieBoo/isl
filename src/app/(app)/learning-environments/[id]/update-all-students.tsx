@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui";
 import { IslLoader } from "@/components/isl-loader";
 import { listStudentsToUpdate, updateCourseStudent } from "@/app/actions/course";
-import { listWorkshopStudents, updateWorkshopStudent } from "@/app/actions/workshops";
+import { listWorkshopStudents, refreshClassSummary, updateWorkshopStudent } from "@/app/actions/workshops";
 
 const AT_A_TIME = 3;
 
@@ -31,6 +31,7 @@ export function UpdateAllStudents({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [upToDate, setUpToDate] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
 
   async function start(everyone = false) {
     setRunning(true);
@@ -68,6 +69,12 @@ export function UpdateAllStudents({
           }
         }),
       );
+      // The week's class summary is built from everyone's weekly insights.
+      if (workshopId && state.done > state.failed) {
+        setSummarizing(true);
+        await refreshClassSummary(workshopId).catch(() => null);
+        setSummarizing(false);
+      }
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
@@ -109,7 +116,9 @@ export function UpdateAllStudents({
         <div className="flex items-center gap-3 rounded-lg border border-isl-blue-pale bg-isl-blue-pale/50 p-3 text-sm text-foreground">
           <IslLoader size={22} label="Updating students" />
           <span>
-            Updating students… {progress.done} of {progress.total} done. Please keep this page open.
+            {summarizing
+              ? "Writing the class summary…"
+              : `Updating students… ${progress.done} of ${progress.total} done. Please keep this page open.`}
           </span>
         </div>
       )}
