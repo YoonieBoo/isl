@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
 import { parseSkillsForm } from "@/lib/skills/parse-skills-form";
 import type { SkillsFormState } from "@/app/actions/course";
-import { updateWorkshopInsight } from "@/lib/workshops";
+import { guessFormStage, updateWorkshopInsight, type FormStageValue } from "@/lib/workshops";
 
 export type WorkshopFormState = { error?: string } | undefined;
 
@@ -76,9 +76,10 @@ export async function setFileWorkshop(datasetId: string, workshopId: string | nu
   const { supabase, user } = await requireUser();
   if (!user) throw new Error("Please sign in again.");
 
+  const { data: file } = await supabase.from("datasets").select("name").eq("id", datasetId).single();
   const { error } = await supabase
     .from("datasets")
-    .update({ workshop_id: workshopId })
+    .update({ workshop_id: workshopId, form_stage: workshopId && file ? guessFormStage(file.name) : null })
     .eq("id", datasetId)
     .eq("environment_id", environmentId);
   if (error) throw new Error(error.message);
@@ -115,7 +116,11 @@ export async function listWorkshopStudents(
 }
 
 // Rebuilds one student's insights for one week from that week's answers.
-export async function updateWorkshopStudent(workshopId: string, learnerId: string): Promise<{ ok: boolean }> {
+// `skipped`: the student has no Pre/Post answers this week (e.g. only a team form).
+export async function updateWorkshopStudent(
+  workshopId: string,
+  learnerId: string,
+): Promise<{ ok: boolean; skipped?: boolean }> {
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false };
   const [{ data: workshop }, { data: learner }] = await Promise.all([
@@ -123,7 +128,52 @@ export async function updateWorkshopStudent(workshopId: string, learnerId: strin
     supabase.from("learners").select("display_name").eq("id", learnerId).single(),
   ]);
   if (!workshop || !learner || !workshop.learning_environments) return { ok: false };
-  const ok = await updateWorkshopInsight(supabase, learnerId, learner.display_name, workshop.learning_environments.name, workshop);
+  const result = await updateWorkshopInsight(
+    supabase,
+    learnerId,
+    learner.display_name,
+    workshop.learning_environments.name,
+    workshop,
+  );
   revalidatePath(`/profiles/${learnerId}`);
-  return { ok };
+  return { ok: result !== "failed", skipped: result === "nothing" };
+}
+
+// Marks a week's form file as its Pre form, Post form or Other.
+export async function setFileStage(datasetId: string, stage: FormStageValue, workshopId: string, environmentId: string) {
+  const { supabase, user } = await requireUser();
+  if (!user) throw new Error("Please sign in again.");
+  const { error } = await supabase
+    .from("datasets")
+    .update({ form_stage: stage })
+    .eq("id", datasetId)
+    .eq("workshop_id", workshopId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/learning-environments/${environmentId}/workshops/${workshopId}`);
+}
+
+// The week's topic, date and learning objectives (Week settings).
+export async function saveWorkshopDetails(
+  workshopId: string,
+  _prev: SkillsFormState,
+  formData: FormData,
+): Promise<SkillsFormState> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Please sign in again." };
+  const title = String(formData.get("title") ?? "").trim();
+  const date = String(formData.get("workshop_date") ?? "").trim();
+  const objectives = String(formData.get("learning_objectives") ?? "").trim();
+  if (!title) return { error: "Enter the workshop topic." };
+
+  const { data, error } = await supabase
+    .from("workshops")
+    .update({ title, workshop_date: date || null, learning_objectives: objectives || null })
+    .eq("id", workshopId)
+    .select("environment_id")
+    .single();
+  if (error || !data) return { error: `Couldn't save: ${error?.message}` };
+
+  await logActivity(supabase, user.id, "updated", "workshop", workshopId, `Updated week details`);
+  revalidatePath(`/learning-environments/${data.environment_id}`, "layout");
+  return { saved: true };
 }

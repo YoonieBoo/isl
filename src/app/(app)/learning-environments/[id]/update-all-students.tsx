@@ -9,7 +9,7 @@ import { listWorkshopStudents, updateWorkshopStudent } from "@/app/actions/works
 
 const AT_A_TIME = 3;
 
-type Progress = { total: number; done: number; failed: number };
+type Progress = { total: number; done: number; failed: number; skipped: number };
 
 // Updates students one request per student (a few at a time), so a big class
 // never hits the server's time limit and the counter can show real progress.
@@ -46,23 +46,24 @@ export function UpdateAllStudents({
         else setUpToDate(true);
         return;
       }
-      const state: Progress = { total: students.length, done: 0, failed: 0 };
+      const state: Progress = { total: students.length, done: 0, failed: 0, skipped: 0 };
       setProgress({ ...state });
       const queue = [...students];
       await Promise.all(
         Array.from({ length: Math.min(AT_A_TIME, queue.length) }, async () => {
           for (let s = queue.shift(); s; s = queue.shift()) {
-            let ok = false;
+            let result: { ok: boolean; skipped?: boolean } = { ok: false };
             try {
-              ok =
+              result =
                 workshopId && everyone
-                  ? (await updateWorkshopStudent(workshopId, s.id)).ok
-                  : (await updateCourseStudent(environmentId, s.id, { everyone })).ok;
+                  ? await updateWorkshopStudent(workshopId, s.id)
+                  : await updateCourseStudent(environmentId, s.id, { everyone });
             } catch {
-              ok = false;
+              result = { ok: false };
             }
             state.done += 1;
-            if (!ok) state.failed += 1;
+            if (!result.ok) state.failed += 1;
+            else if (result.skipped) state.skipped += 1;
             setProgress({ ...state });
           }
         }),
@@ -120,7 +121,9 @@ export function UpdateAllStudents({
         >
           {progress.failed
             ? `${progress.done - progress.failed} of ${progress.total} students updated. ${progress.failed} couldn't be updated — click “Update students” again to retry them.`
-            : `All ${progress.total} students are updated.`}
+            : progress.skipped
+              ? `${progress.total - progress.skipped} students are updated. ${progress.skipped} had no Pre or Post answers this week, so there was nothing to rate.`
+              : `All ${progress.total} students are updated.`}
         </div>
       )}
       {error && <p className="text-sm text-danger">{error}</p>}

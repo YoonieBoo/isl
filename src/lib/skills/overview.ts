@@ -118,6 +118,51 @@ OTHER OBSERVATIONS — concerns ("label: quote"):
 ${list(params.concerns)}`));
 }
 
+const WEEK_FORMAT = `Output EXACTLY these three lines, nothing else:
+Pre → Post: <how the learner changed from before class to after class, max 25 words>
+Learning gap: <what is still missing after class, max 15 words>
+Next action: <one concrete thing the teacher can ask the learner to do before next week, max 15 words>
+
+"Pre → Post" covers ONLY skills marked COMPARABLE below (shown in both forms). Name the skill and its two levels exactly as given, then what changed in the learner's answers (e.g. "Innovation concepts: Needs support → Strong; now sees innovation as improving care, not just new tech"). Mention at most two skills. If no skill is comparable, write "Pre → Post: Not enough evidence to compare". If there is no Post form yet, write "Pre → Post: No Post form yet"; if there is no Pre form, write "Pre → Post: No Pre form to compare with".
+A skill marked ONE FORM ONLY was simply not asked in the other form: never call it a drop, a gain or a gap because of that.
+"Learning gap" is what the learner still hasn't shown after class against this week's objectives, using the Post form first. Never name as a gap something the learner showed at Developing or Strong in either form.
+"Next action" must follow from the learning gap and must not ask for something the learner already showed well.
+"Learning gap" and "Next action" must be specific to this learner's answers and this week's objectives. If the answers can't support a conclusion, write "Not enough evidence" for that line instead of guessing.`;
+
+function levelChanges(framework: SkillFramework, pre: SkillRatings | null, post: SkillRatings | null): string {
+  return framework.skills
+    .map((skill) => {
+      const before = pre?.skills.find((s) => s.key === skill.key);
+      const after = post?.skills.find((s) => s.key === skill.key);
+      const level = (r: typeof before) => (r ? LEVEL_LABEL[r.level] : "no form");
+      const shown = (r: typeof before) => Boolean(r && r.level !== "not_enough_evidence");
+      const tag = shown(before) && shown(after) ? "COMPARABLE" : shown(before) || shown(after) ? "ONE FORM ONLY" : "NOT SHOWN";
+      const reasons = [before && `Pre: ${before.summary}`, after && `Post: ${after.summary}`].filter(Boolean).join(" ");
+      return `- [${tag}] ${skill.name}: Pre ${level(before)} → Post ${level(after)}. ${reasons}`;
+    })
+    .join("\n");
+}
+
+// One learner's weekly overview: what changed from the Pre form to the Post
+// form, what is still missing, and what the teacher can do next.
+export async function writeWeeklyOverview(params: {
+  weekName: string;
+  objectives: string | null;
+  framework: SkillFramework;
+  pre: SkillRatings | null;
+  post: SkillRatings | null;
+}): Promise<string | null> {
+  const { weekName, objectives, framework, pre, post } = params;
+  return complete(`You are writing a short weekly note for a teacher about one learner in ${weekName}.
+
+${WEEK_FORMAT}
+
+${RULES}
+${objectives?.trim() ? `\nThis week's learning objectives:\n${objectives.trim()}\n` : ""}
+Skill levels before class (Pre form) and after class (Post form), with the reasons:
+${levelChanges(framework, pre, post)}`);
+}
+
 async function writeCombinedOverview(courses: { code: string; overview: string }[]): Promise<string | null> {
   return tidyOverview(await complete(`Write a quick overview of a learner across all their courses, for an instructor. In "Doing well" and "Work on", mention the course code when a point applies to one course only. Base it only on these per-course overviews:
 

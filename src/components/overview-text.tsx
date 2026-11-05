@@ -1,13 +1,19 @@
-// Overviews are written as short "Label: text" lines (Doing well / Work on /
-// Worth noting) so instructors can scan them; older paragraph overviews still
+// Overviews are written as short "Label: text" lines so instructors can scan
+// them: course overviews use Doing well / Work on / Worth noting, weekly ones
+// Pre → Post / Learning gap / Next action. Older paragraph overviews still
 // render as a plain paragraph.
-export const OVERVIEW_LINE = /^(Doing well|Work on|Worth noting)\s*:\s*(.+)$/i;
+const LABELS = ["Doing well", "Work on", "Worth noting", "Pre → Post", "Learning gap", "Next action"];
+const canonical = (label: string) => label.toLowerCase().replace(/\s+/g, " ").replace("->", "→");
+export const OVERVIEW_LINE = /^(Doing well|Work on|Worth noting|Pre\s*(?:→|->)\s*Post|Learning gap|Next action)\s*:\s*(.+)$/i;
 
 export function parseOverview(text: string): { label: string; text: string }[] | null {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const parsed = lines.map((l) => l.match(OVERVIEW_LINE)).filter((m): m is RegExpMatchArray => Boolean(m));
   if (parsed.length === 0 || parsed.length !== lines.length) return null;
-  return parsed.map((m) => ({ label: m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), text: m[2] }));
+  return parsed.map((m) => ({
+    label: LABELS.find((l) => canonical(l) === canonical(m[1]).replace(/\s*→\s*/, " → ")) ?? m[1],
+    text: m[2],
+  }));
 }
 
 export function OverviewText({ text }: { text: string }) {

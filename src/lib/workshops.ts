@@ -3,7 +3,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { courseCode } from "@/lib/course-code";
 import { readSkillRatings, readStoredSkills, type SkillFramework, type SkillRatings } from "@/lib/skills/frameworks";
 import { rateLearnerSkills } from "@/lib/skills/rate-skills";
-import { writeCourseOverview } from "@/lib/skills/overview";
+import { writeCourseOverview, writeWeeklyOverview } from "@/lib/skills/overview";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -14,7 +14,20 @@ export type Workshop = {
   title: string;
   workshop_date: string | null;
   skill_framework: unknown;
+  learning_objectives: string | null;
 };
+
+export type FormStageValue = "pre" | "post" | "other";
+export const FORM_STAGE_LABEL: Record<FormStageValue, string> = { pre: "Pre", post: "Post", other: "Other" };
+
+// Guesses a weekly form's stage from its file name: "Pre-workshop 1" → Pre,
+// "Learning Reflection 1" / "Post-workshop" → Post, anything else (e.g. a
+// team "Workshop 1" submission) → Other. Can be changed in Week settings.
+export function guessFormStage(fileName: string): FormStageValue {
+  if (/pre[- _]?(workshop|class)/i.test(fileName)) return "pre";
+  if (/reflection|post[- _]?(workshop|class)/i.test(fileName)) return "post";
+  return "other";
+}
 
 export function workshopLabel(w: Pick<Workshop, "week_number" | "title">): string {
   return `Week ${w.week_number} — ${w.title}`;
@@ -31,41 +44,71 @@ export function readWorkshopRatings(value: unknown): SkillRatings | null {
   return readSkillRatings({ skill_ratings: value });
 }
 
-// Rates one learner on one week's skills using only that week's forms, and
-// stores it as their weekly insight. Returns false when there was nothing to
-// rate (no skills for the week, or no answers from this learner that week).
+// Rates one learner on one week's skills from that week's forms and stores it
+// as their weekly insight: the Pre form and the Post form are rated
+// separately, and the overview says what changed, what is still missing and
+// what to do next. A week whose files aren't marked Pre/Post is rated from all
+// its forms together. "nothing" means there was nothing to rate (no skills for
+// the week, or no Pre/Post answers from this learner that week).
+export type WeeklyUpdate = "updated" | "nothing" | "failed";
+
 export async function updateWorkshopInsight(
   supabase: Supabase,
   learnerId: string,
   learnerName: string,
   courseName: string,
   workshop: Workshop,
-): Promise<boolean> {
+): Promise<WeeklyUpdate> {
   const framework = workshopFramework(workshop, courseName);
-  if (!framework) return false;
-  const ratings = await rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, workshop.id);
-  if (!ratings) return false;
+  if (!framework) return "nothing";
+  const base = { workshopId: workshop.id, objectives: workshop.learning_objectives };
+  const weekName = `${courseCode(courseName)} ${workshopLabel(workshop)}`;
 
-  const overview =
-    (await writeCourseOverview({
+  const [pre, post] = await Promise.all([
+    rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, { ...base, stage: "pre" }),
+    rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, { ...base, stage: "post" }),
+  ]);
+
+  let ratings: SkillRatings | null;
+  let overview: string | null;
+  if (pre || post) {
+    ratings = post ?? pre;
+    overview = await writeWeeklyOverview({ weekName, objectives: workshop.learning_objectives, framework, pre, post });
+  } else {
+    // Only weeks with no Pre/Post files fall back to rating every form
+    // together; otherwise a learner who only sent an "Other" form (e.g. a
+    // team submission) simply has no weekly rating.
+    const { count } = await supabase
+      .from("datasets")
+      .select("id", { count: "exact", head: true })
+      .eq("workshop_id", workshop.id)
+      .in("form_stage", ["pre", "post"]);
+    if (count) return "nothing";
+    ratings = await rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, base);
+    if (!ratings) return "nothing";
+    overview = await writeCourseOverview({
       learnerName,
-      courseName: `${courseCode(courseName)} ${workshopLabel(workshop)}`,
+      courseName: weekName,
       framework,
       ratings,
       preferences: [],
       concerns: [],
-    })) ?? ratings.overview;
+    });
+  }
+  if (!ratings) return "failed";
 
   const { error } = await supabase.from("workshop_insights").upsert(
     {
       learner_id: learnerId,
       workshop_id: workshop.id,
       skill_ratings: ratings as never,
-      overview,
-      answer_count: ratings.answerCount,
+      pre_ratings: (pre ?? null) as never,
+      post_ratings: (post ?? null) as never,
+      overview: overview ?? ratings.overview,
+      answer_count: (pre?.answerCount ?? 0) + (post?.answerCount ?? 0) || ratings.answerCount,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "learner_id,workshop_id" },
   );
-  return !error;
+  return error ? "failed" : "updated";
 }

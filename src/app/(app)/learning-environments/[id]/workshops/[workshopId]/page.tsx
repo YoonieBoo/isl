@@ -7,9 +7,23 @@ import { CourseSkillsEditor } from "@/app/(app)/learning-environments/[id]/cours
 import { QuickUpload } from "@/app/(app)/learning-environments/[id]/quick-upload";
 import { StudentList, UploadBanner, splitPending } from "@/app/(app)/learning-environments/[id]/student-list";
 import { UpdateAllStudents } from "@/app/(app)/learning-environments/[id]/update-all-students";
-import { listWorkshopStudents, saveWorkshopSkills, setFileWorkshop } from "@/app/actions/workshops";
+import {
+  listWorkshopStudents,
+  saveWorkshopDetails,
+  saveWorkshopSkills,
+  setFileStage,
+  setFileWorkshop,
+} from "@/app/actions/workshops";
+import { WeekDetailsForm } from "@/app/(app)/learning-environments/[id]/workshops/[workshopId]/week-details-form";
 import { courseCode } from "@/lib/course-code";
-import { workshopFramework, workshopLabel } from "@/lib/workshops";
+import { FORM_STAGE_LABEL, workshopFramework, workshopLabel, type FormStageValue } from "@/lib/workshops";
+
+const STAGES: FormStageValue[] = ["pre", "post", "other"];
+const STAGE_HINT: Record<FormStageValue, string> = {
+  pre: "before class",
+  post: "after class",
+  other: "not used for Pre → Post",
+};
 
 // "Update students" runs one server request per student from this page.
 export const maxDuration = 300;
@@ -30,7 +44,7 @@ export default async function WorkshopPage({
     supabase.from("learning_environments").select("id, name").eq("id", id).single(),
     supabase
       .from("datasets")
-      .select("id, name, record_count, workshop_id, validation_status, validation_summary")
+      .select("id, name, record_count, workshop_id, form_stage, validation_status, validation_summary")
       .eq("environment_id", id)
       .order("created_at", { ascending: false }),
     supabase.from("workshop_insights").select("learner_id").eq("workshop_id", workshopId),
@@ -92,6 +106,25 @@ export default async function WorkshopPage({
             }
           />
         </div>
+        {weekFiles.length > 0 && (
+          <ul className="mt-4 space-y-1 text-xs text-foreground-muted">
+            {weekFiles.map((f) => {
+              const stage = (f.form_stage ?? "other") as FormStageValue;
+              return (
+                <li key={f.id}>
+                  <span
+                    className={`mr-2 inline-block w-12 rounded-full px-2 py-0.5 text-center font-medium ${
+                      stage === "other" ? "bg-surface-pale text-foreground-muted" : "bg-isl-blue-pale text-isl-blue-dark"
+                    }`}
+                  >
+                    {FORM_STAGE_LABEL[stage]}
+                  </span>
+                  {f.name}
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <h2 className="mt-6 text-base font-semibold text-foreground">Students ({students.length})</h2>
         <div className="mt-3">
           <StudentList students={students} emptyText="No students yet. Upload this week's form files to add them." />
@@ -105,6 +138,16 @@ export default async function WorkshopPage({
         </summary>
 
         <div className="mt-4 space-y-4">
+          <Card>
+            <h2 className="mb-4 text-base font-semibold text-foreground">Week details</h2>
+            <WeekDetailsForm
+              save={saveWorkshopDetails.bind(null, workshop.id)}
+              title={workshop.title}
+              date={workshop.workshop_date}
+              objectives={workshop.learning_objectives}
+            />
+          </Card>
+
           <Card>
             <h2 className="text-base font-semibold text-foreground">This week&apos;s skills</h2>
             <p className="mb-4 mt-1 text-sm text-foreground-muted">
@@ -120,18 +163,41 @@ export default async function WorkshopPage({
 
           <Card>
             <h2 className="text-base font-semibold text-foreground">This week&apos;s form files</h2>
+            <p className="mt-1 text-sm text-foreground-muted">
+              Pre is the form students answer before class; Post is the one after class (e.g. the Learning Reflection).
+              Insights compare the two. Team answers belong in Other.
+            </p>
             {weekFiles.length > 0 ? (
-              <ul className="mt-3 space-y-2 text-sm">
+              <ul className="mt-3 space-y-3 text-sm">
                 {weekFiles.map((f) => (
                   <li key={f.id} className="flex flex-wrap items-center justify-between gap-2">
                     <Link href={`/datasets/${f.id}`} className="text-foreground hover:text-isl-blue hover:underline">
                       {f.name} <span className="text-foreground-muted">({f.record_count} rows)</span>
                     </Link>
-                    <form action={setFileWorkshop.bind(null, f.id, null, env.id)}>
-                      <button type="submit" className="text-xs text-foreground-muted hover:text-danger">
-                        Remove from this week
-                      </button>
-                    </form>
+                    <div className="flex items-center gap-3">
+                      <div className="inline-flex overflow-hidden rounded-lg border border-border">
+                        {STAGES.map((stage) => (
+                          <form key={stage} action={setFileStage.bind(null, f.id, stage, workshop.id, env.id)}>
+                            <button
+                              type="submit"
+                              title={STAGE_HINT[stage]}
+                              className={`px-3 py-1 text-xs font-medium ${
+                                (f.form_stage ?? "other") === stage
+                                  ? "bg-isl-blue text-white"
+                                  : "text-foreground-muted hover:bg-surface-pale"
+                              }`}
+                            >
+                              {FORM_STAGE_LABEL[stage]}
+                            </button>
+                          </form>
+                        ))}
+                      </div>
+                      <form action={setFileWorkshop.bind(null, f.id, null, env.id)}>
+                        <button type="submit" className="text-xs text-foreground-muted hover:text-danger">
+                          Remove
+                        </button>
+                      </form>
+                    </div>
                   </li>
                 ))}
               </ul>

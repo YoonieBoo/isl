@@ -138,6 +138,7 @@ export type Database = {
           validation_status: Database["public"]["Enums"]["validation_status"]
           validation_summary: Json
           workshop_id: string | null
+          form_stage: string | null
         }
         Insert: {
           created_at?: string
@@ -151,6 +152,7 @@ export type Database = {
           validation_status?: Database["public"]["Enums"]["validation_status"]
           validation_summary?: Json
           workshop_id?: string | null
+          form_stage?: string | null
         }
         Update: {
           created_at?: string
@@ -164,6 +166,7 @@ export type Database = {
           validation_status?: Database["public"]["Enums"]["validation_status"]
           validation_summary?: Json
           workshop_id?: string | null
+          form_stage?: string | null
         }
         Relationships: [
           {
@@ -903,6 +906,8 @@ export type Database = {
           skill_ratings: Json | null
           updated_at: string
           workshop_id: string
+          pre_ratings: Json | null
+          post_ratings: Json | null
         }
         Insert: {
           answer_count?: number
@@ -912,6 +917,8 @@ export type Database = {
           skill_ratings?: Json | null
           updated_at?: string
           workshop_id: string
+          pre_ratings?: Json | null
+          post_ratings?: Json | null
         }
         Update: {
           answer_count?: number
@@ -921,6 +928,8 @@ export type Database = {
           skill_ratings?: Json | null
           updated_at?: string
           workshop_id?: string
+          pre_ratings?: Json | null
+          post_ratings?: Json | null
         }
         Relationships: [
           {
@@ -948,6 +957,7 @@ export type Database = {
           title: string
           week_number: number
           workshop_date: string | null
+          learning_objectives: string | null
         }
         Insert: {
           created_at?: string
@@ -957,6 +967,7 @@ export type Database = {
           title: string
           week_number: number
           workshop_date?: string | null
+          learning_objectives?: string | null
         }
         Update: {
           created_at?: string
@@ -966,6 +977,7 @@ export type Database = {
           title?: string
           week_number?: number
           workshop_date?: string | null
+          learning_objectives?: string | null
         }
         Relationships: [
           {

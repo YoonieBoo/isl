@@ -106,6 +106,19 @@ function BulletList({ items }: { items: Bullet[] }) {
   );
 }
 
+// One side of the weekly Pre → Post table.
+function WeekLevel({ level }: { level: SkillLevel | null }) {
+  return (
+    <span className="inline-flex w-32 justify-center">
+      {!level || level === "not_enough_evidence" ? (
+        <span className="text-xs text-foreground-muted">—</span>
+      ) : (
+        <SkillLevelBadge level={level} />
+      )}
+    </span>
+  );
+}
+
 type RatedSet = { framework: SkillFramework | null; ratings: SkillRatings | undefined; tag: string | null };
 
 // Strengths and development focus come from fixed skill ratings (see
@@ -155,7 +168,9 @@ export default async function LearnerProfilePage({
   const { data: weekRows } = selectedEnvironmentId
     ? await supabase
         .from("workshop_insights")
-        .select("overview, skill_ratings, updated_at, workshops!inner(id, environment_id, week_number, title, skill_framework)")
+        .select(
+          "overview, skill_ratings, pre_ratings, post_ratings, updated_at, workshops!inner(id, environment_id, week_number, title, skill_framework, learning_objectives)",
+        )
         .eq("learner_id", learnerId)
         .eq("workshops.environment_id", selectedEnvironmentId)
     : { data: [] };
@@ -261,6 +276,18 @@ export default async function LearnerProfilePage({
         ratings: ratingsByEnvironment.get(c.id),
         tag: showCourse ? courseCode(c.name) : null,
       }));
+  // Weekly view: each skill's level from the Pre form and from the Post form.
+  const weekFramework = selectedWeek && courses[0] ? workshopFramework(selectedWeek.workshops, courses[0].name) : null;
+  const weekPre = selectedWeek ? readWorkshopRatings(selectedWeek.pre_ratings) : null;
+  const weekPost = selectedWeek ? readWorkshopRatings(selectedWeek.post_ratings) : null;
+  const weekChanges =
+    weekFramework && (weekPre || weekPost)
+      ? weekFramework.skills.map((skill) => ({
+          name: skill.name,
+          pre: weekPre?.skills.find((s) => s.key === skill.key)?.level ?? null,
+          post: weekPost?.skills.find((s) => s.key === skill.key)?.level ?? null,
+        }))
+      : [];
   const strengths = skillBullets(ratedSets, ["strong"]);
   const needs = skillBullets(ratedSets, ["needs_support", "developing"]);
 
@@ -422,6 +449,28 @@ export default async function LearnerProfilePage({
           )}
         </div>
       </Card>
+
+      {weekMode && weekChanges.length > 0 && (
+        <Card className="mt-6">
+          <h2 className="text-base font-semibold text-foreground">Pre → Post</h2>
+          <p className="mt-1 text-xs text-foreground-muted">
+            Before class (Pre form) and after class (Post form). — means that form&apos;s answers didn&apos;t show the skill,
+            usually because it didn&apos;t ask about it.
+          </p>
+          <ul className="mt-4 divide-y divide-border border-t border-border">
+            {weekChanges.map((c) => (
+              <li key={c.name} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                <span className="font-medium text-foreground">{c.name}</span>
+                <span className="flex items-center gap-2">
+                  <WeekLevel level={c.pre} />
+                  <ArrowRightIcon className="h-3.5 w-3.5 text-foreground-muted" />
+                  <WeekLevel level={c.post} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
         <AccentCard accent="blue" title="Strengths">

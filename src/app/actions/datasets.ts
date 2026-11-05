@@ -9,6 +9,7 @@ import { parseDatasetFile } from "@/lib/dataset-parsing";
 import { suggestColumns } from "@/lib/dataset-column-detection";
 import { normalizeStudentId } from "@/lib/student-id";
 import { NON_ANSWER_FIELD } from "@/lib/answer-fields";
+import { guessFormStage } from "@/lib/workshops";
 
 export type FormState = { error: string } | undefined;
 
@@ -45,6 +46,7 @@ async function uploadOneDataset(
     .insert({
       environment_id: environmentId,
       workshop_id: workshopId,
+      form_stage: workshopId ? guessFormStage(file.name) : null,
       name,
       original_file_name: file.name,
       storage_reference: "",

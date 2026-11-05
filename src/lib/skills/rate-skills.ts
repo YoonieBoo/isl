@@ -23,8 +23,19 @@ const EVIDENCE_SHEET_ANSWER = "raw_evidence";
 
 type Answer = { id: string; form: string; question: string; text: string; processingResultId: string | null };
 
-// workshopId: only that week's uploaded forms (weekly insights); omitted = every form in the course.
-async function gatherAnswers(supabase: Supabase, learnerId: string, environmentId: string, workshopId?: string): Promise<Answer[]> {
+export type FormStage = "pre" | "post";
+
+// Narrows which forms a rating reads: one week's forms (weekly insights), and
+// within it only the Pre or only the Post form. `objectives` is the week's
+// learning objectives, given to the AI as context.
+export type RateOptions = { workshopId?: string; stage?: FormStage; objectives?: string | null };
+
+async function gatherAnswers(
+  supabase: Supabase,
+  learnerId: string,
+  environmentId: string,
+  { workshopId, stage }: RateOptions,
+): Promise<Answer[]> {
   const records: {
     id: string;
     source_data: unknown;
@@ -38,6 +49,7 @@ async function gatherAnswers(supabase: Supabase, learnerId: string, environmentI
       .eq("learner_id", learnerId)
       .eq("datasets.environment_id", environmentId);
     if (workshopId) query = query.eq("datasets.workshop_id", workshopId);
+    if (stage) query = query.eq("datasets.form_stage", stage);
     const { data } = await query
       // Skips rows marked invalid, including "Already uploaded" duplicates.
       .in("validation_status", ["valid", "valid_with_warnings"])
@@ -121,7 +133,14 @@ function verifyQuote(quote: string, preferred: Answer | undefined, all: Answer[]
   return null;
 }
 
-function buildPrompt(learnerName: string, framework: SkillFramework, answers: Answer[]): string {
+const STAGE_RULE: Record<FormStage, string> = {
+  pre: "- These answers were all written BEFORE this week's class (the Pre form). Rate them as they are: this is the learner's starting point, to be compared with their answers after class. A naive answer here is normal; rate it honestly, without penalty or extra credit.",
+  post: "- These answers were all written AFTER this week's class (the Post form). Rate what the learner shows now, against this week's objectives.",
+};
+const MIXED_RULE =
+  '- Pre-workshop forms ("Pre-Workshop", "Pre-workshop Response") ask for first guesses BEFORE the lesson, so a naive pre-workshop answer is expected and must not by itself pull a level down. Base the level mainly on workshop submissions and reflections; use pre-workshop answers mostly to notice growth.';
+
+function buildPrompt(learnerName: string, framework: SkillFramework, answers: Answer[], options: RateOptions): string {
   const skillBlock = framework.skills
     .map((s) => `- key: ${s.key}\n  name: ${s.name}\n  meaning: ${s.description}\n  look for: ${s.lookFor}`)
     .join("\n");
@@ -140,7 +159,7 @@ function buildPrompt(learnerName: string, framework: SkillFramework, answers: An
 
 SKILLS:
 ${skillBlock}
-
+${options.objectives?.trim() ? `\nTHIS WEEK'S LEARNING OBJECTIVES:\n${options.objectives.trim()}\n` : ""}
 LEVELS (use exactly one per skill):
 - strong: several answers show the skill clearly, with specific, well-reasoned, concrete content.
 - developing: the skill shows up, but answers are partial, generic, or inconsistent.
@@ -149,7 +168,7 @@ LEVELS (use exactly one per skill):
 
 RULES:
 - Judge only what the learner actually wrote. Do not reward length alone; reward specific reasoning.
-- Pre-workshop forms ("Pre-Workshop", "Pre-workshop Response") ask for first guesses BEFORE the lesson, so a naive pre-workshop answer is expected and must not by itself pull a level down. Base the level mainly on workshop submissions and reflections; use pre-workshop answers mostly to notice growth.
+${options.stage ? STAGE_RULE[options.stage] : MIXED_RULE}
 - Use needs_support only when the relevant answers, taken together, show misunderstanding or are consistently very thin. If the picture is mixed, use developing.
 - Do not judge personality, intelligence, or English fluency.
 - Rate a skill ONLY from answers whose content is actually about that skill (what the student says they did, decided, found or think about it). If no answer is about a skill, use not_enough_evidence.
@@ -208,12 +227,12 @@ export async function rateLearnerSkills(
   learnerName: string,
   environmentId: string,
   framework: SkillFramework,
-  workshopId?: string,
+  options: RateOptions = {},
 ): Promise<SkillRatings | null> {
-  const answers = await gatherAnswers(supabase, learnerId, environmentId, workshopId);
+  const answers = await gatherAnswers(supabase, learnerId, environmentId, options);
   if (answers.length === 0) return null;
 
-  const parsed = (await callOpenAi(buildPrompt(learnerName, framework, answers))) as {
+  const parsed = (await callOpenAi(buildPrompt(learnerName, framework, answers, options))) as {
     overview?: unknown;
     skills?: unknown;
   } | null;
