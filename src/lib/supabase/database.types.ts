@@ -959,6 +959,7 @@ export type Database = {
           workshop_date: string | null
           learning_objectives: string | null
           class_summary: Json | null
+          learning_context: Json | null
         }
         Insert: {
           created_at?: string
@@ -970,6 +971,7 @@ export type Database = {
           workshop_date?: string | null
           learning_objectives?: string | null
           class_summary?: Json | null
+          learning_context?: Json | null
         }
         Update: {
           created_at?: string
@@ -981,6 +983,7 @@ export type Database = {
           workshop_date?: string | null
           learning_objectives?: string | null
           class_summary?: Json | null
+          learning_context?: Json | null
         }
         Relationships: [
           {

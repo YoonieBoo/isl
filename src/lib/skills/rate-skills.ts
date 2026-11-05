@@ -159,7 +159,7 @@ function buildPrompt(learnerName: string, framework: SkillFramework, answers: An
 
 SKILLS:
 ${skillBlock}
-${options.objectives?.trim() ? `\nTHIS WEEK'S LEARNING OBJECTIVES:\n${options.objectives.trim()}\n` : ""}
+${options.objectives?.trim() ? `\nTHIS WEEK'S LEARNING OBJECTIVES AND CONTENT:\n${options.objectives.trim()}\n` : ""}
 LEVELS (use exactly one per skill):
 - strong: several answers show the skill clearly, with specific, well-reasoned, concrete content.
 - developing: the skill shows up, but answers are partial, generic, or inconsistent.

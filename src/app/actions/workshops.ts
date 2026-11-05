@@ -8,6 +8,10 @@ import { parseSkillsForm } from "@/lib/skills/parse-skills-form";
 import type { SkillsFormState } from "@/app/actions/course";
 import { guessFormStage, updateWorkshopInsight, type FormStageValue } from "@/lib/workshops";
 import { refreshWeekClassSummary } from "@/lib/class-summary";
+import { extractLearningContext, readLearningContext, type LearningContext } from "@/lib/week-materials";
+import { skillKey } from "@/lib/skills/frameworks";
+import { courseCode } from "@/lib/course-code";
+import { NON_ANSWER_FIELD } from "@/lib/answer-fields";
 
 export type WorkshopFormState = { error?: string } | undefined;
 
@@ -192,4 +196,80 @@ export async function refreshClassSummary(workshopId: string): Promise<{ ok: boo
   const summary = await refreshWeekClassSummary(supabase, workshop, workshop.learning_environments.name);
   revalidatePath(`/learning-environments/${workshop.environment_id}/workshops/${workshopId}`);
   return { ok: Boolean(summary) };
+}
+
+// Reads the slides / workshop instructions the browser just uploaded for a
+// week and stores what the AI found, for the teacher to review.
+export async function readWeekMaterials(
+  workshopId: string,
+  files: { name: string; path: string }[],
+): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Please sign in again." };
+  const { data: workshop } = await supabase
+    .from("workshops")
+    .select("*, learning_environments(name)")
+    .eq("id", workshopId)
+    .single();
+  if (!workshop?.learning_environments) return { error: "Week not found." };
+
+  const prefix = `workshops/${workshopId}/`;
+  const downloaded: { name: string; base64: string }[] = [];
+  for (const f of files) {
+    if (!f.path.startsWith(prefix)) return { error: "Unexpected file location." };
+    const { data, error } = await supabase.storage.from("datasets").download(f.path);
+    if (error || !data) return { error: `Couldn't open ${f.name}.` };
+    downloaded.push({ name: f.name, base64: Buffer.from(await data.arrayBuffer()).toString("base64") });
+  }
+  if (downloaded.length === 0) return { error: "Choose at least one PDF." };
+
+  // The week's form questions, so suggested skills match what students are asked.
+  const { data: weekFiles } = await supabase
+    .from("datasets")
+    .select("form_stage, validation_summary")
+    .eq("workshop_id", workshopId);
+  // Only Pre/Post: "Other" forms (e.g. team answers) aren't rated per student.
+  const formQuestions = (weekFiles ?? []).flatMap((f) => {
+    if (f.form_stage !== "pre" && f.form_stage !== "post") return [];
+    const columns = (f.validation_summary as { columns?: unknown } | null)?.columns;
+    const label = f.form_stage === "pre" ? "Pre" : "Post";
+    return (Array.isArray(columns) ? columns : [])
+      .filter((c): c is string => typeof c === "string" && !NON_ANSWER_FIELD.test(c) && !/team/i.test(c))
+      .map((c) => `${label}: ${c.trim()}`);
+  });
+
+  const found = await extractLearningContext({
+    weekName: `${courseCode(workshop.learning_environments.name)} Week ${workshop.week_number} — ${workshop.title}`,
+    files: downloaded,
+    formQuestions,
+  });
+  if (!found) return { error: "The AI couldn't read these files. Try again, or check they are PDFs." };
+
+  const context: LearningContext = { ...found, materials: files, readAt: new Date().toISOString() };
+  await supabase.from("workshops").update({ learning_context: context as never }).eq("id", workshopId);
+  await logActivity(supabase, user.id, "updated", "workshop", workshopId, `Read ${files.length} teaching file(s)`);
+  revalidatePath(`/learning-environments/${workshop.environment_id}/workshops/${workshopId}`);
+  return {};
+}
+
+// The teacher accepts the AI's suggested objectives and skills for the week.
+export async function applyWeekSuggestions(workshopId: string) {
+  const { supabase, user } = await requireUser();
+  if (!user) throw new Error("Please sign in again.");
+  const { data: workshop } = await supabase.from("workshops").select("*").eq("id", workshopId).single();
+  const context = readLearningContext(workshop?.learning_context);
+  if (!workshop || !context) return;
+
+  const skills = context.suggestedSkills.map((s) => ({ key: skillKey(s.name), name: s.name, description: s.description }));
+  await supabase
+    .from("workshops")
+    .update({
+      skill_framework: skills.length > 0 ? skills : workshop.skill_framework,
+      learning_objectives:
+        context.suggestedObjectives.map((o, i) => `${i + 1}. ${o}`).join("\n") || workshop.learning_objectives,
+      learning_context: { ...context, appliedAt: new Date().toISOString() } as never,
+    })
+    .eq("id", workshopId);
+  await logActivity(supabase, user.id, "updated", "workshop", workshopId, "Used the suggested objectives and skills");
+  revalidatePath(`/learning-environments/${workshop.environment_id}/workshops/${workshopId}`);
 }

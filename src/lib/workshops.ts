@@ -4,6 +4,7 @@ import { courseCode } from "@/lib/course-code";
 import { readSkillRatings, readStoredSkills, type SkillFramework, type SkillRatings } from "@/lib/skills/frameworks";
 import { rateLearnerSkills } from "@/lib/skills/rate-skills";
 import { writeCourseOverview, writeWeeklyOverview } from "@/lib/skills/overview";
+import { weekContextText } from "@/lib/week-materials";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -15,6 +16,7 @@ export type Workshop = {
   workshop_date: string | null;
   skill_framework: unknown;
   learning_objectives: string | null;
+  learning_context?: unknown;
 };
 
 export type FormStageValue = "pre" | "post" | "other";
@@ -61,7 +63,8 @@ export async function updateWorkshopInsight(
 ): Promise<WeeklyUpdate> {
   const framework = workshopFramework(workshop, courseName);
   if (!framework) return "nothing";
-  const base = { workshopId: workshop.id, objectives: workshop.learning_objectives };
+  const context = weekContextText(workshop.learning_objectives, workshop.learning_context);
+  const base = { workshopId: workshop.id, objectives: context };
   const weekName = `${courseCode(courseName)} ${workshopLabel(workshop)}`;
 
   const [pre, post] = await Promise.all([
@@ -73,7 +76,7 @@ export async function updateWorkshopInsight(
   let overview: string | null;
   if (pre || post) {
     ratings = post ?? pre;
-    overview = await writeWeeklyOverview({ weekName, objectives: workshop.learning_objectives, framework, pre, post });
+    overview = await writeWeeklyOverview({ weekName, objectives: context, framework, pre, post });
   } else {
     // Only weeks with no Pre/Post files fall back to rating every form
     // together; otherwise a learner who only sent an "Other" form (e.g. a

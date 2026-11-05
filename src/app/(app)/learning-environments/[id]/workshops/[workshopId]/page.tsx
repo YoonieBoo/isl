@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BackLink } from "@/components/back-link";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, PrimaryButton } from "@/components/ui";
 import { CourseSkillsEditor } from "@/app/(app)/learning-environments/[id]/course-skills-editor";
 import { QuickUpload } from "@/app/(app)/learning-environments/[id]/quick-upload";
 import { StudentList, UploadBanner, splitPending } from "@/app/(app)/learning-environments/[id]/student-list";
 import { UpdateAllStudents } from "@/app/(app)/learning-environments/[id]/update-all-students";
 import {
+  applyWeekSuggestions,
   listWorkshopStudents,
   saveWorkshopDetails,
   saveWorkshopSkills,
@@ -17,6 +18,8 @@ import {
 import { RefreshSummaryButton } from "@/app/(app)/learning-environments/[id]/workshops/[workshopId]/refresh-summary-button";
 import { OverviewText } from "@/components/overview-text";
 import { readClassSummary } from "@/lib/class-summary";
+import { readLearningContext } from "@/lib/week-materials";
+import { ReadMaterials } from "@/app/(app)/learning-environments/[id]/workshops/[workshopId]/read-materials";
 import { WeekDetailsForm } from "@/app/(app)/learning-environments/[id]/workshops/[workshopId]/week-details-form";
 import { courseCode } from "@/lib/course-code";
 import { FORM_STAGE_LABEL, workshopFramework, workshopLabel, type FormStageValue } from "@/lib/workshops";
@@ -66,6 +69,7 @@ export default async function WorkshopPage({
   const { matching, needsColumns } = splitPending(weekFiles.filter((f) => f.validation_status === "pending"));
   const here = `/learning-environments/${env.id}/workshops/${workshop.id}`;
   const summary = readClassSummary(workshop.class_summary);
+  const learning = readLearningContext(workshop.learning_context);
   const latestInsight = (weekInsights ?? []).reduce((m, w) => (w.updated_at > m ? w.updated_at : m), "");
   const summaryStale = Boolean(summary && latestInsight > summary.updatedAt);
 
@@ -193,6 +197,75 @@ export default async function WorkshopPage({
         </summary>
 
         <div className="mt-4 space-y-4">
+          <Card>
+            <h2 className="text-base font-semibold text-foreground">Teaching materials</h2>
+            <p className="mb-4 mt-1 text-sm text-foreground-muted">
+              Upload this week&apos;s slides and workshop instructions. The AI reads them and suggests the week&apos;s
+              objectives and skills; nothing changes until you click “Use these”. The key concepts are also used when rating
+              students.
+            </p>
+            <ReadMaterials workshopId={workshop.id} again={Boolean(learning)} />
+            {learning && (
+              <div className="mt-5 space-y-4 border-t border-border pt-4 text-sm">
+                <p className="text-xs text-foreground-muted">
+                  Read from {learning.materials.map((m) => m.name).join(", ")} on{" "}
+                  {new Date(learning.readAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </p>
+                {[
+                  { title: "Suggested objectives", items: learning.suggestedObjectives },
+                  { title: "Key concepts", items: learning.keyConcepts },
+                  { title: "What a good answer shows", items: learning.goodAnswers },
+                ].map((block) => (
+                  <div key={block.title}>
+                    <p className="font-medium text-foreground">{block.title}</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground-muted">
+                      {block.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+                <div>
+                  <p className="font-medium text-foreground">Suggested skills</p>
+                  <ul className="mt-1 space-y-1.5">
+                    {learning.suggestedSkills.map((skill) => (
+                      <li key={skill.name}>
+                        <span className="font-medium text-foreground">{skill.name}</span>
+                        <span className="text-foreground-muted"> — {skill.description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {(learning.notAskedInForms ?? []).length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-warning">
+                    <p className="font-medium">Not asked in this week&apos;s Pre or Post forms</p>
+                    <ul className="mt-1 list-disc pl-5">
+                      {learning.notAskedInForms!.map((o) => (
+                        <li key={o}>{o}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-xs">
+                      Students&apos; individual answers can&apos;t show these. Add a question about them to next week&apos;s forms.
+                    </p>
+                  </div>
+                )}
+                {learning.appliedAt && learning.appliedAt > learning.readAt ? (
+                  <p className="text-sm text-success">
+                    In use since {new Date(learning.appliedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.
+                    Edit them below if needed.
+                  </p>
+                ) : (
+                  <form action={applyWeekSuggestions.bind(null, workshop.id)} className="flex flex-wrap items-center gap-3">
+                    <PrimaryButton type="submit">Use these objectives and skills</PrimaryButton>
+                    <span className="text-xs text-foreground-muted">
+                      Replaces the week&apos;s current objectives and skills. Then click “Re-rate everyone”.
+                    </span>
+                  </form>
+                )}
+              </div>
+            )}
+          </Card>
+
           <Card>
             <h2 className="mb-4 text-base font-semibold text-foreground">Week details</h2>
             <WeekDetailsForm
