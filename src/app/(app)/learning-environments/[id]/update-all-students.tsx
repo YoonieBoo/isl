@@ -7,16 +7,20 @@ import { IslLoader } from "@/components/isl-loader";
 import { listStudentsToUpdate, updateCourseStudent } from "@/app/actions/course";
 import { listWorkshopStudents, refreshClassSummary, updateWorkshopStudent } from "@/app/actions/workshops";
 
-const AT_A_TIME = 3;
+// Students updated in parallel. Each needs several AI calls, so far more than
+// this hits the AI service's rate limit and ends up slower, not faster.
+const AT_A_TIME = 10;
 
 type Progress = { total: number; done: number; failed: number; skipped: number };
 
 // Updates students one request per student (a few at a time), so a big class
 // never hits the server's time limit and the counter can show real progress.
-// By default only students with new answers are updated: their new answers
-// are read, then their course insights and the weeks those answers belong to
-// are rebuilt. "Re-rate everyone" rebuilds every student (after skills
-// change) — the whole course, or with `workshopId` just that week.
+// By default only students with new answers are updated. On the whole-course
+// page their new answers are read and their course insights (plus the weeks
+// those answers belong to) rebuilt. On a week page (`workshopId`) only that
+// week's results are rebuilt, which is much quicker; the whole course is
+// updated from its own page. "Re-rate everyone" rebuilds every student (after
+// skills change).
 export function UpdateAllStudents({
   environmentId,
   workshopId,
@@ -55,10 +59,9 @@ export function UpdateAllStudents({
           for (let s = queue.shift(); s; s = queue.shift()) {
             let result: { ok: boolean; skipped?: boolean } = { ok: false };
             try {
-              result =
-                workshopId && everyone
-                  ? await updateWorkshopStudent(workshopId, s.id)
-                  : await updateCourseStudent(environmentId, s.id, { everyone });
+              result = workshopId
+                ? await updateWorkshopStudent(workshopId, s.id)
+                : await updateCourseStudent(environmentId, s.id, { everyone });
             } catch {
               result = { ok: false };
             }
@@ -93,7 +96,7 @@ export function UpdateAllStudents({
           <span className="text-sm text-foreground-muted">{disabledReason}</span>
         ) : (
           <span className="text-xs text-foreground-muted">
-            Only students with new answers are updated.{" "}
+            {workshopId ? "Updates this week only, for students with new answers." : "Only students with new answers are updated."}{" "}
             <button
               type="button"
               onClick={() => start(true)}

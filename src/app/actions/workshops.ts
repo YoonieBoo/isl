@@ -93,30 +93,39 @@ export async function setFileWorkshop(datasetId: string, workshopId: string | nu
 }
 
 // Students who submitted any form in this week. With `onlyNew`, just those
-// whose answers the AI hasn't read yet (for the week's "Update students").
+// whose weekly result is missing or older than their newest answer this week
+// (for the week's "Update students"). A file moved into the week after it was
+// uploaded isn't "new" this way; "Re-rate everyone" covers that.
 export async function listWorkshopStudents(
   workshopId: string,
   { onlyNew = false }: { onlyNew?: boolean } = {},
 ): Promise<{ id: string; name: string }[]> {
   const { supabase, user } = await requireUser();
   if (!user) throw new Error("Please sign in again.");
-  const ids = new Set<string>();
+  const newestAnswer = new Map<string, string>();
   for (let from = 0; ; from += 1000) {
     const { data } = await supabase
       .from("dataset_records")
-      .select("learner_id, datasets!inner(workshop_id), processing_results(status)")
+      .select("learner_id, created_at, datasets!inner(workshop_id)")
       .eq("datasets.workshop_id", workshopId)
       .in("validation_status", ["valid", "valid_with_warnings"])
       .not("learner_id", "is", null)
       .range(from, from + 999);
     for (const r of data ?? []) {
-      const read = (r.processing_results ?? []).some((pr) => ["success", "warning", "skipped"].includes(pr.status));
-      if (r.learner_id && !(onlyNew && read)) ids.add(r.learner_id);
+      if (!r.learner_id) continue;
+      const seen = newestAnswer.get(r.learner_id);
+      if (!seen || r.created_at > seen) newestAnswer.set(r.learner_id, r.created_at);
     }
     if (!data || data.length < 1000) break;
   }
-  if (ids.size === 0) return [];
-  const { data: learners } = await supabase.from("learners").select("id, display_name").in("id", [...ids]);
+  let ids = [...newestAnswer.keys()];
+  if (onlyNew) {
+    const { data: done } = await supabase.from("workshop_insights").select("learner_id, updated_at").eq("workshop_id", workshopId);
+    const updatedAt = new Map((done ?? []).map((d) => [d.learner_id, d.updated_at]));
+    ids = ids.filter((id) => !updatedAt.has(id) || newestAnswer.get(id)! > updatedAt.get(id)!);
+  }
+  if (ids.length === 0) return [];
+  const { data: learners } = await supabase.from("learners").select("id, display_name").in("id", ids);
   return (learners ?? []).map((l) => ({ id: l.id, name: l.display_name })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
