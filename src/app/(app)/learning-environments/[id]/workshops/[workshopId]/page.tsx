@@ -99,6 +99,7 @@ export default async function WorkshopPage({
         failed={Number(failed) || 0}
         matching={matching}
         needsColumns={needsColumns}
+        autoUpdate
       />
 
       <Card className="mt-6">
@@ -107,6 +108,7 @@ export default async function WorkshopPage({
           <UpdateAllStudents
             environmentId={env.id}
             workshopId={workshop.id}
+            autoStart={(Number(uploaded) || 0) > 0 && !matching && Boolean(framework)}
             disabledReason={
               !framework
                 ? "Set this week's skills first (Week settings below)."

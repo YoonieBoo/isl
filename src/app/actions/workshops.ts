@@ -156,6 +156,7 @@ export async function listWorkshopStudents(
 export async function updateWorkshopStudent(
   workshopId: string,
   learnerId: string,
+  { everyone = false }: { everyone?: boolean } = {},
 ): Promise<{ ok: boolean; skipped?: boolean }> {
   const { supabase, user } = await requireUser();
   if (!user) return { ok: false };
@@ -170,6 +171,7 @@ export async function updateWorkshopStudent(
     learner.display_name,
     workshop.learning_environments.name,
     workshop,
+    { fresh: everyone },
   );
   revalidatePath(`/profiles/${learnerId}`);
   return { ok: result !== "failed", skipped: result === "nothing" };

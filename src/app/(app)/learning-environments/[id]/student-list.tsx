@@ -44,7 +44,9 @@ export function UploadBanner({
   failed,
   matching,
   needsColumns,
+  autoUpdate = false,
 }: {
+  autoUpdate?: boolean;
   uploaded: number;
   failed: number;
   matching: boolean;
@@ -66,7 +68,7 @@ export function UploadBanner({
         </div>
       )}
       <AutoRefresh active={matching} intervalMs={4000} />
-      {uploaded > 0 && (matching || needsColumns.length === 0) && (
+      {uploaded > 0 && (
         <div
           className={`mt-4 rounded-lg border p-3 text-sm ${
             matching ? "border-isl-blue-pale bg-isl-blue-pale/50 text-foreground" : "border-green-200 bg-green-50 text-success"
@@ -74,7 +76,9 @@ export function UploadBanner({
         >
           {matching
             ? `Uploaded ${uploaded} file${uploaded === 1 ? "" : "s"}. Matching students… this page refreshes by itself.`
-            : `Uploaded ${uploaded} file${uploaded === 1 ? "" : "s"} and matched the students. Next: click “Update students”.`}
+            : `Uploaded ${uploaded} file${uploaded === 1 ? "" : "s"}${needsColumns.length === 0 ? " and matched the students" : ""}.${
+                autoUpdate ? " Updating them now." : " Next: click “Update students”."
+              }`}
           {failed > 0 && ` ${failed} file${failed === 1 ? "" : "s"} couldn't be uploaded.`}
         </div>
       )}

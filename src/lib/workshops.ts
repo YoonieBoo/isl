@@ -54,12 +54,44 @@ export function readWorkshopRatings(value: unknown): SkillRatings | null {
 // the week, or no Pre/Post answers from this learner that week).
 export type WeeklyUpdate = "updated" | "nothing" | "failed";
 
+// The student's Pre rating is done once: it is reused on later updates (e.g.
+// when the Post form arrives) unless they sent a newer Pre answer since, or the
+// week's skills changed. "Re-rate everyone" passes `fresh` to redo it anyway.
+async function savedPreRatings(
+  supabase: Supabase,
+  learnerId: string,
+  workshopId: string,
+  framework: { skills: { key: string }[] },
+): Promise<SkillRatings | null> {
+  const { data: row } = await supabase
+    .from("workshop_insights")
+    .select("pre_ratings, updated_at")
+    .eq("learner_id", learnerId)
+    .eq("workshop_id", workshopId)
+    .maybeSingle();
+  const pre = readWorkshopRatings(row?.pre_ratings);
+  if (!row || !pre) return null;
+  const sameSkills =
+    pre.skills.length === framework.skills.length && framework.skills.every((k) => pre.skills.some((s) => s.key === k.key));
+  if (!sameSkills) return null;
+  const { data: newer } = await supabase
+    .from("dataset_records")
+    .select("id, datasets!inner(workshop_id, form_stage)")
+    .eq("learner_id", learnerId)
+    .eq("datasets.workshop_id", workshopId)
+    .eq("datasets.form_stage", "pre")
+    .gt("created_at", row.updated_at)
+    .limit(1);
+  return newer && newer.length > 0 ? null : pre;
+}
+
 export async function updateWorkshopInsight(
   supabase: Supabase,
   learnerId: string,
   learnerName: string,
   courseName: string,
   workshop: Workshop,
+  { fresh = false }: { fresh?: boolean } = {},
 ): Promise<WeeklyUpdate> {
   const framework = workshopFramework(workshop, courseName);
   if (!framework) return "nothing";
@@ -67,8 +99,10 @@ export async function updateWorkshopInsight(
   const base = { workshopId: workshop.id, objectives: context };
   const weekName = `${courseCode(courseName)} ${workshopLabel(workshop)}`;
 
+  const keptPre = fresh ? null : await savedPreRatings(supabase, learnerId, workshop.id, framework);
   const [pre, post] = await Promise.all([
-    rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, { ...base, stage: "pre" }),
+    keptPre ??
+      rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, { ...base, stage: "pre" }),
     rateLearnerSkills(supabase, learnerId, learnerName, workshop.environment_id, framework, { ...base, stage: "post" }),
   ]);
 

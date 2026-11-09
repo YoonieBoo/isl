@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui";
 import { IslLoader } from "@/components/isl-loader";
 import { listStudentsToUpdate, updateCourseStudent } from "@/app/actions/course";
@@ -21,16 +21,23 @@ type Progress = { total: number; done: number; failed: number; skipped: number }
 // week's results are rebuilt, which is much quicker; the whole course is
 // updated from its own page. "Re-rate everyone" rebuilds every student (after
 // skills change).
+// `autoStart`: start "Update students" by itself (right after an upload has
+// been matched), then drop the "?uploaded=" from the address so a later
+// refresh doesn't start it again.
 export function UpdateAllStudents({
   environmentId,
   workshopId,
   disabledReason,
+  autoStart = false,
 }: {
   environmentId: string;
   workshopId?: string;
   disabledReason: string | null;
+  autoStart?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const autoStarted = useRef(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +67,7 @@ export function UpdateAllStudents({
             let result: { ok: boolean; skipped?: boolean } = { ok: false };
             try {
               result = workshopId
-                ? await updateWorkshopStudent(workshopId, s.id)
+                ? await updateWorkshopStudent(workshopId, s.id, { everyone })
                 : await updateCourseStudent(environmentId, s.id, { everyone });
             } catch {
               result = { ok: false };
@@ -78,13 +85,21 @@ export function UpdateAllStudents({
         await refreshClassSummary(workshopId).catch(() => null);
         setSummarizing(false);
       }
-      router.refresh();
+      if (autoStarted.current) router.replace(pathname);
+      else router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setRunning(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoStart || disabledReason || autoStarted.current) return;
+    autoStarted.current = true;
+    void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, disabledReason]);
 
   return (
     <div className="space-y-2">
