@@ -76,18 +76,40 @@ export async function saveWorkshopSkills(
   return { saved: true };
 }
 
+// A week's file changed (added, removed, or its Pre/Post label switched): clear
+// the weekly results of the students in that file, so they show as "not
+// updated yet" and the week's "Update students" redoes them.
+async function clearWeekResultsForFile(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  datasetId: string,
+  workshopId: string,
+) {
+  const { data: records } = await supabase.from("dataset_records").select("learner_id").eq("dataset_id", datasetId);
+  const learners = [...new Set((records ?? []).map((r) => r.learner_id).filter((id): id is string => Boolean(id)))];
+  for (let i = 0; i < learners.length; i += 200) {
+    await supabase
+      .from("workshop_insights")
+      .delete()
+      .eq("workshop_id", workshopId)
+      .in("learner_id", learners.slice(i, i + 200));
+  }
+}
+
 // Puts an already-uploaded form file into a week (or takes it out with null).
 export async function setFileWorkshop(datasetId: string, workshopId: string | null, environmentId: string) {
   const { supabase, user } = await requireUser();
   if (!user) throw new Error("Please sign in again.");
 
-  const { data: file } = await supabase.from("datasets").select("name").eq("id", datasetId).single();
+  const { data: file } = await supabase.from("datasets").select("name, workshop_id").eq("id", datasetId).single();
   const { error } = await supabase
     .from("datasets")
     .update({ workshop_id: workshopId, form_stage: workshopId && file ? guessFormStage(file.name) : null })
     .eq("id", datasetId)
     .eq("environment_id", environmentId);
   if (error) throw new Error(error.message);
+  for (const week of new Set([file?.workshop_id, workshopId])) {
+    if (week) await clearWeekResultsForFile(supabase, datasetId, week);
+  }
 
   revalidatePath(`/learning-environments/${environmentId}`, "layout");
 }
@@ -157,12 +179,15 @@ export async function updateWorkshopStudent(
 export async function setFileStage(datasetId: string, stage: FormStageValue, workshopId: string, environmentId: string) {
   const { supabase, user } = await requireUser();
   if (!user) throw new Error("Please sign in again.");
+  const { data: before } = await supabase.from("datasets").select("form_stage").eq("id", datasetId).single();
+  if (before?.form_stage === stage) return;
   const { error } = await supabase
     .from("datasets")
     .update({ form_stage: stage })
     .eq("id", datasetId)
     .eq("workshop_id", workshopId);
   if (error) throw new Error(error.message);
+  await clearWeekResultsForFile(supabase, datasetId, workshopId);
   revalidatePath(`/learning-environments/${environmentId}/workshops/${workshopId}`);
 }
 
